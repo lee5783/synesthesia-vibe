@@ -1,0 +1,44 @@
+{
+  "wav": "tests/tools/wav-generator/deterministic-test.wav",
+  "presetPathPrefix": "BeatDrop Resources/presets",
+  "defaultFrames": 600,
+  "blendPattern": 3,
+  "presets": [
+    { "id": "preset-glowsticks-v2-02", "file": "Eo.S. + Geiss - glowsticks v2 02 (Relief Mix).milk" },
+    { "id": "preset-cat-scan", "file": "Eo.S. + Phat - CAT Scan (Nirvana flux).milk" },
+    { "id": "preset-dark-side-of-the-moon", "file": "Eo.S. - dark side of the moon (plus a few more hits and a pill).milk" },
+    { "id": "preset-now-and-later", "file": "Esotic & Rozzer - Now And Later.milk" },
+    { "id": "preset-transcendance-remix", "file": "Goody - Need - Transcendance remix.milk" },
+    { "id": "preset-fractopia-upspoken-mix", "file": "Rovastar - Fractopia (Upspoken Mix).milk" },
+    { "id": "preset-jesters-calling-2", "file": "Rovastar - Jester's Calling 2.milk" },
+    { "id": "preset-tiger-no-5", "file": "Stahlregen & Flexi + Geiss - Tiger No.5 (Random texture flow).milk" },
+    { "id": "preset-fuzzy-sciences", "file": "Unchained - Fuzzy Sciences.milk" },
+    { "id": "preset-shifter-swarm", "file": "shifter - swarm.milk" }
+  ],
+  "blends": [
+    {
+      "id": "blend-catscan-to-fractopia",
+      "from": "Eo.S. + Phat - CAT Scan (Nirvana flux).milk",
+      "to": "Rovastar - Fractopia (Upspoken Mix).milk",
+      "blendAtFrame": 300,
+      "blendTimeSeconds": 2.0,
+      "frames": 600
+    },
+    {
+      "id": "blend-shifterswarm-to-glowsticks",
+      "from": "shifter - swarm.milk",
+      "to": "Eo.S. + Geiss - glowsticks v2 02 (Relief Mix).milk",
+      "blendAtFrame": 300,
+      "blendTimeSeconds": 2.0,
+      "frames": 600
+    },
+    {
+      "id": "blend-transcendance-to-tigerno5",
+      "from": "Goody - Need - Transcendance remix.milk",
+      "to": "Stahlregen & Flexi + Geiss - Tiger No.5 (Random texture flow).milk",
+      "blendAtFrame": 300,
+      "blendTimeSeconds": 2.0,
+      "frames": 600
+    }
+  ]
+}

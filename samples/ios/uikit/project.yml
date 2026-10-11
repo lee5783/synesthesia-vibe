@@ -1,0 +1,73 @@
+name: SynesthesiaVibeUIKit
+options:
+  bundleIdPrefix: com.lee5783.synesthesiavibe
+  deploymentTarget:
+    iOS: "13.0"
+  createIntermediateGroups: true
+packages:
+  SynesthesiaVibe:
+    path: ../../../platform/darwin
+targets:
+  SynesthesiaVibeUIKit:
+    type: application
+    platform: iOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: SynesthesiaVibe
+        product: SynesthesiaVibe
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: SynesthesiaVibe
+        UILaunchScreen:
+          UIColorName: ""
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: SynesthesiaVibe visualizes live microphone audio when the microphone source is selected.
+        UIFileSharingEnabled: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lee5783.synesthesiavibe.uikit
+        PRODUCT_NAME: SynesthesiaVibeUIKit
+        IPHONEOS_DEPLOYMENT_TARGET: "13.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -DGLES_SILENCE_DEPRECATION"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+    postBuildScripts:
+      - name: Bundle SynesthesiaVibe Resources
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(SRCROOT)/../../../resources/mvp-presets
+          - $(SRCROOT)/../../../resources/beatdrop/textures
+          - $(SRCROOT)/../../../tests/tools/wav-generator/deterministic-test.wav
+          - $(SRCROOT)/../../../resources/beatdrop/capture-set.json
+          - $(SRCROOT)/../../../resources/beatdrop/capture-presets
+        script: |
+          set -euo pipefail
+          repo="${SRCROOT}/../../.."
+          dest="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          mkdir -p "${dest}/presets" "${dest}/textures" "${dest}/audio"
+          rsync -a --delete "${repo}/resources/mvp-presets/" "${dest}/presets/"
+          rsync -a --delete "${repo}/resources/beatdrop/textures/" "${dest}/textures/"
+          rsync -a "${repo}/tests/tools/wav-generator/deterministic-test.wav" "${dest}/audio/"
+          rsync -a "${repo}/resources/beatdrop/capture-set.json" "${dest}/capture-set.json"
+          mkdir -p "${dest}/capture-presets"
+          index=0
+          while file=$(plutil -extract "presets.${index}.file" raw -o - "${repo}/resources/beatdrop/capture-set.json" 2>/dev/null); do
+            rsync -a "${repo}/resources/beatdrop/capture-presets/${file}" "${dest}/capture-presets/"
+            index=$((index + 1))
+          done

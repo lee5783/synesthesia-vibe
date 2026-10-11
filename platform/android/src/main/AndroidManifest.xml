@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml
+  SynesthesiaVibe
+
+  Created by lee5783 on 2026-10-11.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:glEsVersion="0x00030000"
+        android:required="true" />
+
+</manifest>

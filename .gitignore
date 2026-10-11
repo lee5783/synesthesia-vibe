@@ -1,0 +1,15 @@
+build/
+out/
+run/
+capture-output/
+reports/
+vcpkg_installed/
+screenshots/local/
+.cxx/
+local.properties
+.gradle/
+.kotlin/
+.build/
+.swiftpm/
+xcuserdata/
+DerivedData/

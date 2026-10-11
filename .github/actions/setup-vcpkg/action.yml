@@ -1,0 +1,88 @@
+#
+#  action.yml
+#  SynesthesiaVibe
+#
+#  Created by lee5783 on 2026-10-11.
+#
+
+name: Setup vcpkg
+description: Fetch vcpkg at the manifest baseline, bootstrap it, export VCPKG_ROOT and cache binary packages.
+
+inputs:
+  triplets:
+    description: Space-separated vcpkg triplets built by this job, used in the binary cache key.
+    required: true
+  cache-key-suffix:
+    description: Optional extra segment appended to the binary cache key.
+    required: false
+    default: ''
+
+outputs:
+  vcpkg-root:
+    description: Absolute path of the bootstrapped vcpkg checkout.
+    value: ${{ steps.paths.outputs.vcpkg-root }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve vcpkg baseline and paths
+      id: paths
+      shell: bash
+      env:
+        RUNNER_TEMP_DIR: ${{ runner.temp }}
+        TRIPLETS: ${{ inputs.triplets }}
+        CONFIG_FILE: ${{ github.workspace }}/vcpkg-configuration.json
+      run: |
+        set -euo pipefail
+        baseline="$(jq -r '.["default-registry"].baseline // empty' "$CONFIG_FILE")"
+        if [[ ! "$baseline" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::Could not read a 40-character default-registry.baseline from $CONFIG_FILE (got '$baseline')"
+          exit 1
+        fi
+        triplet_key="$(echo "$TRIPLETS" | xargs -n1 | sort | paste -sd '-' -)"
+        if [[ -z "$triplet_key" ]]; then
+          echo "::error::The triplets input is empty"
+          exit 1
+        fi
+        {
+          echo "baseline=$baseline"
+          echo "vcpkg-root=$RUNNER_TEMP_DIR/vcpkg"
+          echo "binary-cache=$RUNNER_TEMP_DIR/vcpkg-binary-cache"
+          echo "triplet-key=$triplet_key"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Fetch and bootstrap vcpkg
+      shell: bash
+      env:
+        BASELINE: ${{ steps.paths.outputs.baseline }}
+        VCPKG_DIR: ${{ steps.paths.outputs.vcpkg-root }}
+      run: |
+        set -euo pipefail
+        rm -rf "$VCPKG_DIR"
+        git init --quiet "$VCPKG_DIR"
+        git -C "$VCPKG_DIR" remote add origin https://github.com/microsoft/vcpkg.git
+        git -C "$VCPKG_DIR" fetch --quiet --depth 1 origin "$BASELINE"
+        git -C "$VCPKG_DIR" checkout --quiet --detach FETCH_HEAD
+        "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
+        echo "vcpkg at $(git -C "$VCPKG_DIR" rev-parse HEAD)"
+
+    - name: Export vcpkg environment
+      shell: bash
+      env:
+        VCPKG_DIR: ${{ steps.paths.outputs.vcpkg-root }}
+        BINARY_CACHE_DIR: ${{ steps.paths.outputs.binary-cache }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$BINARY_CACHE_DIR"
+        {
+          echo "VCPKG_ROOT=$VCPKG_DIR"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$BINARY_CACHE_DIR,readwrite"
+        } >> "$GITHUB_ENV"
+
+    - name: Cache vcpkg binary packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.paths.outputs.binary-cache }}
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.triplet-key }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}${{ inputs.cache-key-suffix != '' && format('-{0}', inputs.cache-key-suffix) || '' }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.triplet-key }}-

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SynesthesiaVibe</string>
+    <string name="projection_channel">System audio capture</string>
+    <string name="projection_notification">Visualizing system audio</string>
+</resources>

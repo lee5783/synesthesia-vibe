@@ -1,0 +1,404 @@
+#
+#  release.yml
+#  SynesthesiaVibe
+#
+#  Created by lee5783 on 2026-10-11.
+#
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  XCODE_APP: /Applications/Xcode_26.6.app
+  ANDROID_NDK_VERSION: 28.2.13676358
+  CMAKE_VERSION: 4.4.3
+  CMAKE_LINUX_SHA256: d6c83076c575bc00b823522ac974bda66d0af05d6ddc30e739c12385cf32c6cc
+  APPLE_TRIPLETS: arm64-ios arm64-ios-simulator x64-ios arm64-osx x64-osx
+  ANDROID_TRIPLETS: arm64-android x64-android
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      short-version: ${{ steps.version.outputs.short-version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - id: version
+        uses: ./.github/actions/resolve-version
+        with:
+          ref: ${{ github.ref }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' }}
+
+  build-apple:
+    needs: resolve-version
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Ninja
+        run: |
+          set -euo pipefail
+          command -v ninja >/dev/null || brew install ninja
+          ninja --version
+          (cd /tmp && env -u PWD cmake --version)
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          triplets: ${{ env.APPLE_TRIPLETS }}
+
+      - name: Build XCFramework
+        run: bash platform/ios/build-xcframework.sh
+
+      - name: Verify XCFramework slices
+        run: |
+          set -euo pipefail
+          XCF=build/xcframework/SynesthesiaVibeCore.xcframework
+          status=0
+          check() {
+            local lib="$1" expected="$2" bin actual
+            bin="$XCF/$lib/SynesthesiaVibeCore.framework/SynesthesiaVibeCore"
+            if [[ ! -e "$bin" ]]; then
+              echo "::error::Missing XCFramework library $lib"
+              status=1
+              return
+            fi
+            actual="$(xcrun lipo -archs "$bin" | tr ' ' '\n' | sort | xargs)"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::$lib has architectures '$actual', expected '$expected'"
+              status=1
+              return
+            fi
+            echo "$lib: $actual"
+          }
+          check ios-arm64 "arm64"
+          check ios-arm64_x86_64-simulator "arm64 x86_64"
+          check macos-arm64_x86_64 "arm64 x86_64"
+          exit "$status"
+
+      - name: Stage XCFramework assets
+        run: |
+          set -euo pipefail
+          mkdir -p build/release
+          ZIP="build/release/SynesthesiaVibeCore-$VERSION.xcframework.zip"
+          cp build/xcframework/SynesthesiaVibeCore.xcframework.zip "$ZIP"
+          (cd /tmp && swift package compute-checksum "$GITHUB_WORKSPACE/$ZIP") > "$ZIP.checksum"
+          ls -l build/release
+          cat "$ZIP.checksum"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-xcframework-${{ env.VERSION }}
+          path: build/release/
+          if-no-files-found: error
+
+  build-apple-samples:
+    needs:
+      - resolve-version
+      - build-apple
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-xcframework-${{ env.VERSION }}
+          path: ${{ runner.temp }}/xcframework
+
+      - name: Unpack XCFramework
+        run: |
+          set -euo pipefail
+          mkdir -p build/xcframework
+          ditto -x -k "$RUNNER_TEMP/xcframework/SynesthesiaVibeCore-$VERSION.xcframework.zip" build/xcframework/
+          ls build/xcframework/SynesthesiaVibeCore.xcframework
+
+      - name: Build sample apps
+        run: bash .github/scripts/build-apple-samples.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-samples-apple-${{ env.VERSION }}
+          path: build/samples/*.zip
+          if-no-files-found: error
+
+  build-android:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            platform/android/*.gradle.kts
+            platform/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Install Android NDK
+        run: |
+          set -euo pipefail
+          (set +o pipefail; yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null)
+          NDK_DIR="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
+          test -f "$NDK_DIR/build/cmake/android.toolchain.cmake"
+          {
+            echo "ANDROID_NDK_HOME=$NDK_DIR"
+            echo "ANDROID_NDK_ROOT=$NDK_DIR"
+            echo "ANDROID_NDK=$NDK_DIR"
+          } >> "$GITHUB_ENV"
+
+      - name: Install CMake and Ninja
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+          ARCHIVE="cmake-$CMAKE_VERSION-linux-x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/$ARCHIVE"
+          echo "$CMAKE_LINUX_SHA256  $RUNNER_TEMP/$ARCHIVE" | sha256sum -c -
+          CMAKE_DIR="$RUNNER_TEMP/cmake-$CMAKE_VERSION"
+          rm -rf "$CMAKE_DIR"
+          mkdir -p "$CMAKE_DIR"
+          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$CMAKE_DIR" --strip-components=1
+          ln -sf "$(command -v ninja)" "$CMAKE_DIR/bin/ninja"
+          "$CMAKE_DIR/bin/cmake" --version
+          echo "CMAKE_DIR=$CMAKE_DIR" >> "$GITHUB_ENV"
+
+      - name: Write local.properties
+        run: |
+          set -euo pipefail
+          {
+            echo "sdk.dir=$ANDROID_HOME"
+            echo "cmake.dir=$CMAKE_DIR"
+          } > platform/android/local.properties
+          cat platform/android/local.properties
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          triplets: ${{ env.ANDROID_TRIPLETS }}
+
+      - name: Build AAR
+        run: bash platform/android/build-aar.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-aar-${{ env.VERSION }}
+          path: |
+            build/android/synesthesiavibe-${{ env.VERSION }}.aar
+            build/android/synesthesiavibe-${{ env.VERSION }}.pom
+          if-no-files-found: error
+
+  build-android-sample:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+      IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            platform/android/*.gradle.kts
+            platform/android/gradle/wrapper/gradle-wrapper.properties
+            samples/android/*.gradle.kts
+            samples/android/app/*.gradle.kts
+            samples/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Install Android NDK
+        run: |
+          set -euo pipefail
+          (set +o pipefail; yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null)
+          NDK_DIR="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
+          test -f "$NDK_DIR/build/cmake/android.toolchain.cmake"
+          {
+            echo "ANDROID_NDK_HOME=$NDK_DIR"
+            echo "ANDROID_NDK_ROOT=$NDK_DIR"
+            echo "ANDROID_NDK=$NDK_DIR"
+          } >> "$GITHUB_ENV"
+
+      - name: Install CMake and Ninja
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+          ARCHIVE="cmake-$CMAKE_VERSION-linux-x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/$ARCHIVE"
+          echo "$CMAKE_LINUX_SHA256  $RUNNER_TEMP/$ARCHIVE" | sha256sum -c -
+          CMAKE_DIR="$RUNNER_TEMP/cmake-$CMAKE_VERSION"
+          rm -rf "$CMAKE_DIR"
+          mkdir -p "$CMAKE_DIR"
+          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$CMAKE_DIR" --strip-components=1
+          ln -sf "$(command -v ninja)" "$CMAKE_DIR/bin/ninja"
+          "$CMAKE_DIR/bin/cmake" --version
+          echo "CMAKE_DIR=$CMAKE_DIR" >> "$GITHUB_ENV"
+
+      - name: Write local.properties
+        run: |
+          set -euo pipefail
+          {
+            echo "sdk.dir=$ANDROID_HOME"
+            echo "cmake.dir=$CMAKE_DIR"
+          } > platform/android/local.properties
+          echo "sdk.dir=$ANDROID_HOME" > samples/android/local.properties
+          cat platform/android/local.properties samples/android/local.properties
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          triplets: ${{ env.ANDROID_TRIPLETS }}
+
+      - name: Decode signing keystore
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          MISSING=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [[ -n "${!name:-}" ]] || MISSING+=("$name")
+          done
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            if [[ "$IS_DRY_RUN" == "true" ]]; then
+              echo "::warning::Missing repository secrets: ${MISSING[*]}. Dry run falls back to a debug-signed APK."
+              echo "mode=debug" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Missing repository secrets: ${MISSING[*]}. Add them before pushing a release tag."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/release.keystore"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          if [[ ! -s "$KEYSTORE" ]]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore."
+            exit 1
+          fi
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "mode=release" >> "$GITHUB_OUTPUT"
+
+      - name: Build sample APK
+        env:
+          MODE: ${{ steps.signing.outputs.mode }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash .github/scripts/build-android-sample.sh "--$MODE"
+
+      - name: Delete signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-sample-android-${{ env.VERSION }}
+          path: build/samples/synesthesiavibe-sample-android-${{ env.VERSION }}*.apk
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - resolve-version
+      - build-apple
+      - build-apple-samples
+      - build-android
+      - build-android-sample
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.resolve-version.outputs.tag }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+      IS_PRERELEASE: ${{ needs.resolve-version.outputs.is-prerelease }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          rm -f SHA256SUMS.txt
+          sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS.txt"
+          mv "$RUNNER_TEMP/SHA256SUMS.txt" SHA256SUMS.txt
+          ls -l
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          ARGS=(--verify-tag --title "SynesthesiaVibe $VERSION" --generate-notes)
+          ARGS+=(--notes 'macOS sample apps are ad-hoc signed and not notarized: on first launch right-click the app and choose Open, or run xattr -dr com.apple.quarantine on the .app.')
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            ARGS+=(--prerelease)
+          fi
+          gh release create "$TAG" "${ARGS[@]}" -- *

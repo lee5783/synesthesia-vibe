@@ -1,0 +1,15 @@
+seed 20260927
+draws 1000000
+rand_lcg 5f46a3b710b55cdb
+uniform_int_0_255 10183c81bb6561e9
+uniform_int_0_215 875abf8423aa35e0
+uniform_int_0_18 f315ce230d820635
+uniform_int_0_64840 0592aaa3d989d2d2
+uniform_int_0_53750 542a37c0d9131ea1
+uniform_int_0_42660 d0485016dbd88d75
+uniform_int_0_31570 f8e29199461749fe
+uniform_int_0_63 95d6d0928b97300a
+uniform_int_0_127 777bfa2c3c9d252f
+uniform_int_size_t_0_0 522f1ca0e579d3e5
+uniform_int_size_t_0_41 0ff74b1e1fbd6cd2
+uniform_real_0_1 87ea64d50cfaf7d5

@@ -1,0 +1,64 @@
+name: SynesthesiaVibeMacSwiftUI
+options:
+  bundleIdPrefix: com.lee5783.synesthesiavibe
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  SynesthesiaVibe:
+    path: ../../../platform/darwin
+targets:
+  SynesthesiaVibeMacSwiftUI:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: SynesthesiaVibe
+        product: SynesthesiaVibe
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: SynesthesiaVibe SwiftUI
+        LSApplicationCategoryType: public.app-category.entertainment
+        NSHighResolutionCapable: true
+        NSMicrophoneUsageDescription: SynesthesiaVibe visualizes live microphone audio when the Microphone source is selected.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lee5783.synesthesiavibe.macswiftui
+        PRODUCT_NAME: SynesthesiaVibeMacSwiftUI
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        SWIFT_VERSION: "5.0"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -DGL_SILENCE_DEPRECATION"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: Bundle SynesthesiaVibe Resources
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(SRCROOT)/../../../resources/mvp-presets
+          - $(SRCROOT)/../../../resources/beatdrop/textures
+          - $(SRCROOT)/../../../resources/beatdrop/capture-presets
+          - $(SRCROOT)/../../../tests/tools/wav-generator/deterministic-test.wav
+          - $(SRCROOT)/../../../resources/beatdrop/capture-set.json
+        script: |
+          set -euo pipefail
+          repo="${SRCROOT}/../../.."
+          beatdrop="${repo}/resources/beatdrop"
+          captureSet="${repo}/resources/beatdrop/capture-set.json"
+          dest="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          mkdir -p "${dest}/presets" "${dest}/capture-presets" "${dest}/textures" "${dest}/audio"
+          rsync -a --delete "${repo}/resources/mvp-presets/" "${dest}/presets/"
+          rsync -a --delete "${beatdrop}/textures/" "${dest}/textures/"
+          rsync -a "${repo}/tests/tools/wav-generator/deterministic-test.wav" "${dest}/audio/"
+          rsync -a "${captureSet}" "${dest}/capture-set.json"
+          rm -f "${dest}/capture-presets/"*.milk
+          count=$(plutil -extract presets raw -o - "${captureSet}")
+          for ((i = 0; i < count; i++)); do
+            file=$(plutil -extract "presets.${i}.file" raw -o - "${captureSet}")
+            cp "${beatdrop}/capture-presets/${file}" "${dest}/capture-presets/"
+          done
+    scheme: {}

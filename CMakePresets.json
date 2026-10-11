@@ -1,0 +1,221 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-gl-dev",
+      "displayName": "Windows GL dev (x86, v143 14.44.35207, C2-005)",
+      "description": "Win32/x86, same toolset as the DX9 presets, but configures the portable/GL dev tree (SYNESTHESIA_VIBE_GL_DEV=ON) instead of the DX9 exe - no DXSDK/FFmpeg requirement",
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "Win32",
+        "strategy": "set"
+      },
+      "toolset": {
+        "value": "v143,version=14.44",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/windows-gl-dev",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x86-windows",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON"
+      }
+    },
+    {
+      "name": "macos-arm64",
+      "displayName": "macOS arm64 (Ninja, AppleClang)",
+      "description": "arm64-osx, AppleClang via Ninja, configures the portable/GL dev tree (SYNESTHESIA_VIBE_GL_DEV=ON); run on the Mac by the mac-session (C2-009)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-arm64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON"
+      }
+    },
+    {
+      "name": "macos-x64",
+      "displayName": "macOS x86_64 (Ninja, AppleClang)",
+      "description": "x64-osx, AppleClang via Ninja, the portable/GL dev tree on the gl backend; the second macOS slice of the XCFramework (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-osx",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_OSX_ARCHITECTURES": "x86_64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gl"
+      }
+    },
+    {
+      "name": "ios-arm64",
+      "displayName": "iOS arm64 device (Ninja, AppleClang)",
+      "description": "arm64-ios, iphoneos SDK, iOS 13.0 floor (C-011), gles backend, no desktop tools; the device slice of the XCFramework (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ios-arm64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-ios",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_SYSROOT": "iphoneos",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "ios-sim-arm64",
+      "displayName": "iOS Simulator arm64 (Ninja, AppleClang)",
+      "description": "arm64-ios-simulator, iphonesimulator SDK, iOS 13.0 floor (C-011), gles backend, no desktop tools (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ios-sim-arm64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-ios-simulator",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_SYSROOT": "iphonesimulator",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "ios-sim-x64",
+      "displayName": "iOS Simulator x86_64 (Ninja, AppleClang)",
+      "description": "x64-ios, iphonesimulator SDK, iOS 13.0 floor (C-011), gles backend, no desktop tools (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ios-sim-x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-ios",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_SYSROOT": "iphonesimulator",
+        "CMAKE_OSX_ARCHITECTURES": "x86_64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "android-arm64-v8a",
+      "displayName": "Android arm64-v8a (Ninja, NDK clang)",
+      "description": "Standalone Android NDK configure/build check (arm64-v8a, API 26, c++_static, gles backend); Gradle drives the same root CMakeLists.txt in platform/android (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/android-arm64-v8a",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-android",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-26",
+        "ANDROID_STL": "c++_static",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "android-x86_64",
+      "displayName": "Android x86_64 (Ninja, NDK clang)",
+      "description": "Standalone Android NDK configure/build check (x86_64, API 26, c++_static, gles backend); Gradle drives the same root CMakeLists.txt in platform/android (CORE-005)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/android-x86_64",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-android",
+        "ANDROID_ABI": "x86_64",
+        "ANDROID_PLATFORM": "android-26",
+        "ANDROID_STL": "c++_static",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-gl-dev",
+      "configurePreset": "windows-gl-dev",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos-arm64",
+      "configurePreset": "macos-arm64"
+    },
+    {
+      "name": "macos-x64",
+      "configurePreset": "macos-x64"
+    },
+    {
+      "name": "ios-arm64",
+      "configurePreset": "ios-arm64"
+    },
+    {
+      "name": "ios-sim-arm64",
+      "configurePreset": "ios-sim-arm64"
+    },
+    {
+      "name": "ios-sim-x64",
+      "configurePreset": "ios-sim-x64"
+    },
+    {
+      "name": "android-arm64-v8a",
+      "configurePreset": "android-arm64-v8a"
+    },
+    {
+      "name": "android-x86_64",
+      "configurePreset": "android-x86_64"
+    }
+  ]
+}

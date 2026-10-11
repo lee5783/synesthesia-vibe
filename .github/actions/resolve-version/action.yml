@@ -1,0 +1,50 @@
+#
+#  action.yml
+#  SynesthesiaVibe
+#
+#  Created by lee5783 on 2026-10-11.
+#
+
+name: Resolve version
+description: Resolves the release version from a v<semver> tag and checks it against the repo-root VERSION file.
+
+inputs:
+  ref:
+    description: Tag ref (refs/tags/v1.2.3) or tag name (v1.2.3).
+    required: false
+    default: ${{ github.ref }}
+  dry-run:
+    description: When true, take the version from VERSION instead of the tag and report the tag as v<version>.
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: Full SemVer version, e.g. 1.2.3-rc.1.
+    value: ${{ steps.resolve.outputs.version }}
+  tag:
+    description: Tag name, e.g. v1.2.3-rc.1.
+    value: ${{ steps.resolve.outputs.tag }}
+  short-version:
+    description: MAJOR.MINOR.PATCH without prerelease or build parts.
+    value: ${{ steps.resolve.outputs.short-version }}
+  is-prerelease:
+    description: true when the version has a prerelease part, otherwise false.
+    value: ${{ steps.resolve.outputs.is-prerelease }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        INPUT_REF: ${{ inputs.ref }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        SCRIPT="$GITHUB_ACTION_PATH/../../scripts/resolve-version.sh"
+        if [[ "$INPUT_DRY_RUN" == "true" ]]; then
+          bash "$SCRIPT" --from-version-file
+        else
+          bash "$SCRIPT" --ref "$INPUT_REF"
+        fi

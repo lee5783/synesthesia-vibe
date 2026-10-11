@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:../platform/darwin">
+   </FileRef>
+   <FileRef
+      location = "group:macos/appkit/SynesthesiaVibeAppKit.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:macos/swiftui/SynesthesiaVibeMacSwiftUI.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:ios/uikit/SynesthesiaVibeUIKit.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:ios/swiftui/SynesthesiaVibeSwiftUI.xcodeproj">
+   </FileRef>
+</Workspace>

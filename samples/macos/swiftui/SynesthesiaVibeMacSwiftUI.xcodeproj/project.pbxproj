@@ -1,0 +1,386 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		00083D11D1E16A9B67A1C64B /* VisualizerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */; };
+		2493B6B2BE1AF97E0404DA74 /* CaptureCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */; };
+		25C7A8B0D6ED338242941157 /* SynesthesiaVibeMacSwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */; };
+		785B99E6694A1935E7D5BBD9 /* PlayerStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F201B593D34E6AF29B27662C /* PlayerStatusView.swift */; };
+		A249C03E58708AEEA6541032 /* PresetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */; };
+		E2F5A9B3E84AD966F838B0B0 /* SynesthesiaVibe in Frameworks */ = {isa = PBXBuildFile; productRef = CB8929A396D78EF97C917681 /* SynesthesiaVibe */; };
+		FA0127C0D6B739E50F0147BA /* VisualizerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		150C8B6AFE7FEC1FB686C8AB /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
+		1DA1B96D6E9E51BBBB97E8B5 /* SynesthesiaVibeMacSwiftUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SynesthesiaVibeMacSwiftUI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetLibrary.swift; sourceTree = "<group>"; };
+		719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynesthesiaVibeMacSwiftUIApp.swift; sourceTree = "<group>"; };
+		98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerRootView.swift; sourceTree = "<group>"; };
+		B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCommand.swift; sourceTree = "<group>"; };
+		CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerScreen.swift; sourceTree = "<group>"; };
+		F201B593D34E6AF29B27662C /* PlayerStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStatusView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B714BA5684BEA18E9B313B94 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E2F5A9B3E84AD966F838B0B0 /* SynesthesiaVibe in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2EBFAC53F80F08AF45339268 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1DA1B96D6E9E51BBBB97E8B5 /* SynesthesiaVibeMacSwiftUI.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7A13B5AE362D14128F4224BE /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				150C8B6AFE7FEC1FB686C8AB /* darwin */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		AB982B82412C6C94E778F35D = {
+			isa = PBXGroup;
+			children = (
+				7A13B5AE362D14128F4224BE /* Packages */,
+				C6BE0BAADF2480EBEBE0E62E /* Sources */,
+				2EBFAC53F80F08AF45339268 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C6BE0BAADF2480EBEBE0E62E /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */,
+				F201B593D34E6AF29B27662C /* PlayerStatusView.swift */,
+				57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */,
+				719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */,
+				98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */,
+				CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8124433B7D0EE50A9064A4C7 /* SynesthesiaVibeMacSwiftUI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EF1874C57145EBFB59AC856D /* Build configuration list for PBXNativeTarget "SynesthesiaVibeMacSwiftUI" */;
+			buildPhases = (
+				70D4F0E84DA6625F056A21B3 /* Sources */,
+				B714BA5684BEA18E9B313B94 /* Frameworks */,
+				9ADCC0D2E7712454D7F1E8AD /* Bundle SynesthesiaVibe Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SynesthesiaVibeMacSwiftUI;
+			packageProductDependencies = (
+				CB8929A396D78EF97C917681 /* SynesthesiaVibe */,
+			);
+			productName = SynesthesiaVibeMacSwiftUI;
+			productReference = 1DA1B96D6E9E51BBBB97E8B5 /* SynesthesiaVibeMacSwiftUI.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A39A98F07DE82CE95BD6BA72 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					8124433B7D0EE50A9064A4C7 = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 338716300162B74F835E60F5 /* Build configuration list for PBXProject "SynesthesiaVibeMacSwiftUI" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = AB982B82412C6C94E778F35D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E7EDF0B5E81CA95B831564CA /* XCLocalSwiftPackageReference "../../../platform/darwin" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2EBFAC53F80F08AF45339268 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8124433B7D0EE50A9064A4C7 /* SynesthesiaVibeMacSwiftUI */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		9ADCC0D2E7712454D7F1E8AD /* Bundle SynesthesiaVibe Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../../resources/mvp-presets",
+				"$(SRCROOT)/../../../resources/beatdrop/textures",
+				"$(SRCROOT)/../../../resources/beatdrop/capture-presets",
+				"$(SRCROOT)/../../../tests/tools/wav-generator/deterministic-test.wav",
+				"$(SRCROOT)/../../../resources/beatdrop/capture-set.json",
+			);
+			name = "Bundle SynesthesiaVibe Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nrepo=\"${SRCROOT}/../../..\"\nbeatdrop=\"${repo}/resources/beatdrop\"\ncaptureSet=\"${repo}/resources/beatdrop/capture-set.json\"\ndest=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${dest}/presets\" \"${dest}/capture-presets\" \"${dest}/textures\" \"${dest}/audio\"\nrsync -a --delete \"${repo}/resources/mvp-presets/\" \"${dest}/presets/\"\nrsync -a --delete \"${beatdrop}/textures/\" \"${dest}/textures/\"\nrsync -a \"${repo}/tests/tools/wav-generator/deterministic-test.wav\" \"${dest}/audio/\"\nrsync -a \"${captureSet}\" \"${dest}/capture-set.json\"\nrm -f \"${dest}/capture-presets/\"*.milk\ncount=$(plutil -extract presets raw -o - \"${captureSet}\")\nfor ((i = 0; i < count; i++)); do\n  file=$(plutil -extract \"presets.${i}.file\" raw -o - \"${captureSet}\")\n  cp \"${beatdrop}/capture-presets/${file}\" \"${dest}/capture-presets/\"\ndone\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		70D4F0E84DA6625F056A21B3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2493B6B2BE1AF97E0404DA74 /* CaptureCommand.swift in Sources */,
+				785B99E6694A1935E7D5BBD9 /* PlayerStatusView.swift in Sources */,
+				A249C03E58708AEEA6541032 /* PresetLibrary.swift in Sources */,
+				25C7A8B0D6ED338242941157 /* SynesthesiaVibeMacSwiftUIApp.swift in Sources */,
+				00083D11D1E16A9B67A1C64B /* VisualizerRootView.swift in Sources */,
+				FA0127C0D6B739E50F0147BA /* VisualizerScreen.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		37033CADC63E90CBB33EC3BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		476BA5F396196A4A0003AB76 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		47F685AA94FF2E325070A01C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -DGL_SILENCE_DEPRECATION";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lee5783.synesthesiavibe.macswiftui;
+				PRODUCT_NAME = SynesthesiaVibeMacSwiftUI;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C1BBF83542680FF92EE23A69 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -DGL_SILENCE_DEPRECATION";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lee5783.synesthesiavibe.macswiftui;
+				PRODUCT_NAME = SynesthesiaVibeMacSwiftUI;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		338716300162B74F835E60F5 /* Build configuration list for PBXProject "SynesthesiaVibeMacSwiftUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				476BA5F396196A4A0003AB76 /* Debug */,
+				37033CADC63E90CBB33EC3BD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EF1874C57145EBFB59AC856D /* Build configuration list for PBXNativeTarget "SynesthesiaVibeMacSwiftUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1BBF83542680FF92EE23A69 /* Debug */,
+				47F685AA94FF2E325070A01C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		E7EDF0B5E81CA95B831564CA /* XCLocalSwiftPackageReference "../../../platform/darwin" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../platform/darwin;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CB8929A396D78EF97C917681 /* SynesthesiaVibe */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SynesthesiaVibe;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A39A98F07DE82CE95BD6BA72 /* Project object */;
+}

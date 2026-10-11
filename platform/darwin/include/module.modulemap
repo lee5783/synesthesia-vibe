@@ -1,0 +1,14 @@
+//
+//  module.modulemap
+//  SynesthesiaVibe
+//
+//  Created by lee5783 on 2026-10-11.
+//
+
+framework module SynesthesiaVibeCore {
+    umbrella header "SynesthesiaVibeCore.h"
+    exclude header "synesthesia-vibe.h"
+
+    export *
+    module * { export * }
+}

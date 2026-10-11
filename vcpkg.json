@@ -1,0 +1,18 @@
+{
+  "dependencies": [
+    {
+      "name": "ffmpeg",
+      "platform": "windows"
+    },
+    {
+      "name": "glfw3",
+      "platform": "!ios & !android"
+    },
+    "glm",
+    {
+      "name": "gtest",
+      "platform": "!ios & !android"
+    },
+    "projectm-eval"
+  ]
+}
