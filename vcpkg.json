@@ -6,12 +6,12 @@
     },
     {
       "name": "glfw3",
-      "platform": "!ios & !android"
+      "platform": "!ios & !android & !emscripten"
     },
     "glm",
     {
       "name": "gtest",
-      "platform": "!ios & !android"
+      "platform": "!ios & !android & !emscripten"
     },
     "projectm-eval"
   ]

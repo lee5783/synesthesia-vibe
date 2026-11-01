@@ -43,6 +43,7 @@ WHAT COUNTS AS A HIT
     - <Metal/...>, <MetalKit/...>
     - <jni.h>, <android/...>
     - <glad/...>
+    - <emscripten.h>, <emscripten/...>
     - <windows.h>
     - <TargetConditionals.h>
 
@@ -103,7 +104,7 @@ OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 # the .ps1 twin and the sibling check-portable-only.sh (grep -E -i).
 shopt -s nocasematch
 
-FORBIDDEN_INCLUDE_RE='#[[:space:]]*(include|import)[[:space:]]*[<"](GL/[^">]+\.h|(GLES2|GLES3|OpenGLES|EGL|Metal|MetalKit|android|glad)/[^">]+|jni\.h|windows\.h|TargetConditionals\.h)[>"]'
+FORBIDDEN_INCLUDE_RE='#[[:space:]]*(include|import)[[:space:]]*[<"](GL/[^">]+\.h|(GLES2|GLES3|OpenGLES|EGL|Metal|MetalKit|android|glad|emscripten)/[^">]+|jni\.h|emscripten\.h|windows\.h|TargetConditionals\.h)[>"]'
 
 HITS_FILE="$OUT_DIR/public-header-hits.txt"
 MENTIONS_FILE="$OUT_DIR/public-header-comment-mentions.txt"

@@ -181,6 +181,39 @@
         "SYNESTHESIA_VIBE_BACKEND": "gles",
         "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
       }
+    },
+    {
+      "name": "web-wasm32-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "VCPKG_TARGET_TRIPLET": "wasm32-emscripten",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "web-wasm32",
+      "inherits": "web-wasm32-base",
+      "displayName": "Web wasm32 (Ninja, Emscripten)",
+      "description": "wasm32-emscripten, Emscripten toolchain chainloaded through vcpkg (needs EMSDK), gles backend over WebGL2, no desktop tools; packaged by platform/web",
+      "binaryDir": "${sourceDir}/build/web-wasm32",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "web-wasm32-debug",
+      "inherits": "web-wasm32-base",
+      "displayName": "Web wasm32 Debug (Ninja, Emscripten)",
+      "description": "Debug twin of web-wasm32",
+      "binaryDir": "${sourceDir}/build/web-wasm32-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     }
   ],
   "buildPresets": [
@@ -216,6 +249,14 @@
     {
       "name": "android-x86_64",
       "configurePreset": "android-x86_64"
+    },
+    {
+      "name": "web-wasm32",
+      "configurePreset": "web-wasm32"
+    },
+    {
+      "name": "web-wasm32-debug",
+      "configurePreset": "web-wasm32-debug"
     }
   ]
 }

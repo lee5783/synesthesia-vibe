@@ -1,0 +1,206 @@
+/*
+  styles.css
+  SynesthesiaVibe
+
+  Created by lee5783 on 2026-10-12.
+*/
+
+:root {
+    color-scheme: dark;
+    --panel: rgba(12, 12, 16, 0.78);
+    --text: #f2f2f5;
+    --muted: #a0a0ad;
+    --accent: #6fd3ff;
+    --error: #b3261e;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: var(--text);
+    overflow: hidden;
+}
+
+#visualizer {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: #000;
+}
+
+button, select {
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+select option {
+    background: #1b1b22;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.overlay[hidden], .toolbar[hidden], .error-banner[hidden], .capture-panel[hidden] {
+    display: none;
+}
+
+.panel {
+    background: var(--panel);
+    padding: 28px 32px;
+    border-radius: 12px;
+    width: min(420px, calc(100vw - 32px));
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.panel h1, .capture-panel h1 {
+    margin: 0 0 12px;
+    font-size: 22px;
+}
+
+.panel progress {
+    width: 100%;
+    margin: 8px 0 18px;
+}
+
+.panel #start-button {
+    font-size: 18px;
+    padding: 10px 36px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+}
+
+.load-status, .hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0;
+    word-break: break-word;
+}
+
+.hint {
+    margin-top: 14px;
+}
+
+.toolbar {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+    padding: 10px 14px;
+    background: var(--panel);
+    border-radius: 10px;
+}
+
+.group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#preset-select {
+    max-width: 280px;
+}
+
+.meters {
+    display: flex;
+    gap: 14px;
+}
+
+.meter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.meter .bar {
+    width: 70px;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.meter .bar div {
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+}
+
+.meter output {
+    width: 36px;
+    font-variant-numeric: tabular-nums;
+}
+
+.status-line {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.error-banner {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--error);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.error-banner span {
+    flex: 1;
+    word-break: break-word;
+}
+
+.capture-panel {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    padding: 16px 20px;
+    background: var(--panel);
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+.capture-panel a {
+    color: var(--accent);
+}

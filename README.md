@@ -6,8 +6,9 @@ visualizer for Windows and DirectX 9, to portable code: a preset parser, an Open
 that also builds as OpenGL ES 3.0, and audio analysis. Preset shaders are written in HLSL and are
 translated to GLSL at runtime with the vendored [hlslparser](https://github.com/unknownworlds/hlslparser).
 
-It ships as an Apple XCFramework (Objective-C and Swift API, iOS and macOS) and an Android AAR
-(Java API), with sample apps for each platform.
+It ships as an Apple XCFramework (Objective-C and Swift API, iOS and macOS), an Android AAR
+(Java API) and a WebAssembly build with an ES-module JavaScript API (WebGL2), with sample apps for
+each platform.
 
 ## Modules
 
@@ -20,8 +21,10 @@ It ships as an Apple XCFramework (Objective-C and Swift API, iOS and macOS) and 
 | [`platform/darwin/`](platform/darwin) | Apple wrapper: Objective-C and Swift API, and the Swift package used by the samples |
 | [`platform/ios/`](platform/ios), [`platform/macos/`](platform/macos) | Apple view classes, and the XCFramework build script |
 | [`platform/android/`](platform/android) | Android library (Gradle project, JNI bridge and Java API), and the AAR build script |
+| [`platform/web/`](platform/web) | Web library: the Emscripten wasm target, the ES-module JavaScript API (`js/`), and the dist build script |
 | [`samples/ios/`](samples/ios), [`samples/macos/`](samples/macos) | UIKit, SwiftUI and AppKit sample apps, opened through [`samples/apple.xcworkspace`](samples/apple.xcworkspace) |
 | [`samples/android/`](samples/android) | Jetpack Compose sample app |
+| [`samples/web/`](samples/web) | Plain-JavaScript sample page (no bundler) |
 | [`resources/mvp-presets/`](resources/mvp-presets) | The 10 presets the library is validated against |
 | [`resources/beatdrop/`](resources/beatdrop) | Presets, textures and the preset list (`capture-set.json`) that the sample apps bundle |
 | [`tests/unit/`](tests/unit) | Unit tests (GoogleTest, run through CTest) |
@@ -36,6 +39,7 @@ It ships as an Apple XCFramework (Objective-C and Swift API, iOS and macOS) and 
 | iOS | 13 (SwiftUI sample: 15) | OpenGL ES 3.0 |
 | macOS | 12 (SwiftUI sample: 15) | OpenGL 3.3 Core |
 | Android | API 26 | OpenGL ES 3.0 |
+| Web | Chrome/Edge 95, Firefox 100, Safari 15.2 | WebGL2 |
 
 Windows and Linux are not release targets.
 
@@ -51,6 +55,7 @@ this repository's Releases page. Every file name carries the version `<v>`:
 | `synesthesiavibe-sample-ios-uikit-<v>.zip`, `synesthesiavibe-sample-ios-swiftui-<v>.zip` | iOS Simulator `.app` (arm64 + x86_64), unsigned |
 | `synesthesiavibe-sample-macos-appkit-<v>.zip`, `synesthesiavibe-sample-macos-swiftui-<v>.zip` | Universal macOS `.app`, ad-hoc signed, not notarized |
 | `synesthesiavibe-sample-android-<v>.apk` | Android sample, release-signed |
+| `synesthesia-vibe-web-<v>.zip` | Web library dist: `synesthesia-vibe-wasm.{js,wasm}`, the ES-module JavaScript API and a `VERSION` stamp |
 | `SHA256SUMS.txt` | sha256 of every other asset |
 
 - **The iOS samples run in the Simulator only.** They are not signed for a device. Install one with
@@ -75,6 +80,8 @@ this repository's Releases page. Every file name carries the version `<v>`:
 - Android targets: the Android SDK with NDK `28.2.13676358` and CMake `4.4.3`. Create a `local.properties`
   in `platform/android/` with `sdk.dir` and `cmake.dir`, and one in `samples/android/` with `sdk.dir`.
   These files are ignored by git.
+- Web target: [emsdk](https://github.com/emscripten-core/emsdk) `6.0.12`, activated in the shell that runs
+  the build (`source <emsdk>/emsdk_env.sh` exports `EMSDK`), and the `zip` CLI for `--zip`.
 
 The library version is the root [`VERSION`](VERSION) file. Every build script accepts `--help`.
 
@@ -149,6 +156,38 @@ Output: `build/samples/synesthesiavibe-sample-android-<v>[-debug].apk`. `--relea
 keystore named by `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
 `ANDROID_KEY_PASSWORD`; all four must be set.
 
+### Web library
+
+```sh
+EMSDK=$HOME/emsdk platform/web/build-web.sh
+EMSDK=$HOME/emsdk platform/web/build-web.sh --zip
+```
+
+Output: `build/web/dist/`, a flat folder with `synesthesia-vibe-wasm.js`, `synesthesia-vibe-wasm.wasm`,
+the JavaScript modules and a `VERSION` file. `--zip` also writes `build/web/synesthesia-vibe-web-<v>.zip`,
+the release asset. There is no npm package and no bundler: copy the dist folder next to your page and
+import `synesthesia-vibe.js`, or map the bare specifier `synesthesia-vibe` to it with an import map.
+
+A minimal integration: `const module = await loadSynesthesiaModule()`, then
+`await new ResourceLoader(module).load("manifest.json")` for your presets and textures, then
+`const view = await SynesthesiaCanvas.create(canvas, module, { onError })` and
+`view.loadPreset("/synesthesiavibe/presets/<name>.milk")`. Audio comes from a user gesture through
+`AudioInput.fromMicrophone(view)`, `AudioInput.fromMediaElement(view, audioElement)` or a `WavFeeder`.
+The page needs a secure context (`localhost` or HTTPS) for the microphone; no COOP/COEP headers are
+required.
+
+### Web sample
+
+```sh
+EMSDK=$HOME/emsdk .github/scripts/build-web-sample.sh
+EMSDK=$HOME/emsdk .github/scripts/build-web-sample.sh --skip-library --serve 8000
+```
+
+The first form builds the library, then assembles `build/samples/web/` from [`samples/web/`](samples/web),
+the dist folder and the presets, textures and test WAV under `resources/`. `--serve` hosts it on
+`127.0.0.1`. The sample page has a Start button, a source selector (WAV, microphone, audio file, and tab
+audio on Chromium), preset switching with blending and bass/mid/treble meters.
+
 ### Desktop library and unit tests (macOS)
 
 The `macos-arm64` preset builds the library with OpenGL 3.3, the desktop tools and the unit tests.
@@ -171,8 +210,8 @@ result:
   `NoiseLevel0Test.MatchesPhase2DumpNoiseReference` and the five `ProjectMEvalQConformance.*` tests.
 
 `run-unit-tests.sh` is a thin wrapper around `ctest`; `--filter <regex>` runs a subset. The other configure
-presets in [`CMakePresets.json`](CMakePresets.json) (`macos-x64`, `ios-*`, `android-*`) are used by the
-packaging scripts above.
+presets in [`CMakePresets.json`](CMakePresets.json) (`macos-x64`, `ios-*`, `android-*`, `web-wasm32*`) are
+used by the packaging scripts above.
 
 ### Publishing a release
 
@@ -209,3 +248,5 @@ notices are in [NOTICE](NOTICE):
 - [projectm-eval](https://github.com/projectM-visualizer/projectm-eval), the projectM Expression Evaluation
   Library, and its ns-eel2 compatibility shim in
   [`src/parser/ns-eel2-shim/`](src/parser/ns-eel2-shim): MIT.
+- [Emscripten](https://emscripten.org), whose runtime support code is embedded in the generated
+  `synesthesia-vibe-wasm.js` and `.wasm` of the web release asset: MIT or University of Illinois/NCSA.

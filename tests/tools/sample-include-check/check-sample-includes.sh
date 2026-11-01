@@ -47,8 +47,17 @@ WHAT COUNTS AS A VIOLATION
   Kotlin / Java (*.kt, *.kts, *.java):
     - import com.synesthesiavibe.internal.*;
     - System.loadLibrary (JNI loading belongs to platform/android only).
+  JavaScript under <root>/web (*.js, *.mjs, and inline <script> blocks in *.html / *.htm other
+  than type=importmap / JSON):
+    - an import specifier (import ... from, export ... from, import 'X', import('X')) other
+      than the bare specifier synesthesia-vibe or a relative path (./, ../) that resolves
+      inside <root>/web;
+    - a specifier containing synesthesia-vibe-wasm, platform/web or /js/ is always a violation;
+    - any use of createSynesthesiaVibeModule (the raw Emscripten factory is not public API);
+    - <script src="X"> in HTML where X is not a relative path resolving inside <root>/web.
 
-  Text after // on a line is ignored.
+  Text after // on a line is ignored (for JavaScript only when // starts the line or follows
+  whitespace or ;, so URLs inside strings are kept). <!-- --> and /* */ are not stripped.
 
 EXIT CODE
 
@@ -130,6 +139,14 @@ OBJC_MODULE_RE='^[[:space:]]*@import[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)'
 SWIFT_IMPORT_RE='^[[:space:]]*(@[A-Za-z_]+[[:space:]]+)*import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)'
 JVM_INTERNAL_RE='^[[:space:]]*import[[:space:]]+(static[[:space:]]+)?com\.synesthesiavibe\.internal([.;[:space:]]|$)'
 LOAD_LIBRARY_RE='System[[:space:]]*\.[[:space:]]*loadLibrary'
+JS_QUOTE="[\"'\`]"
+JS_NOT_QUOTE="[^\"'\`]"
+JS_SPECIFIER_RE="(^|[^A-Za-z0-9_\$.])(from|import)[[:space:]]*\\(?[[:space:]]*${JS_QUOTE}(${JS_NOT_QUOTE}+)${JS_QUOTE}"
+JS_FACTORY_RE='createSynesthesiaVibeModule'
+HTML_SCRIPT_OPEN_RE='<script([^>]*)>'
+HTML_SCRIPT_SRC_RE="[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?([^\"'[:space:]>]+)"
+HTML_SCRIPT_DATA_TYPE_RE="type[[:space:]]*=[[:space:]]*[\"']?[^\"'[:space:]>]*(importmap|json)"
+WEB_DIR="$SAMPLES_DIR/web"
 
 HITS_FILE="$OUT_DIR/sample-include-hits.txt"
 : > "$HITS_FILE"
@@ -192,7 +209,113 @@ resolves_in_sample() {
   return 1
 }
 
+web_relative_resolves() {
+  local FILE="$1" NAME="$2" TARGET TARGET_DIR
+  TARGET="$(dirname "$FILE")/$NAME"
+  [[ -f "$TARGET" ]] || return 1
+  TARGET_DIR="$(cd "$(dirname "$TARGET")" && pwd)"
+  [[ "$TARGET_DIR" == "$WEB_DIR" || "$TARGET_DIR" == "$WEB_DIR"/* ]]
+}
+
+check_js_specifier() {
+  local REL="$1" LINE_NUMBER="$2" FILE="$3" SPEC="$4" LINE="$5"
+  case "$SPEC" in
+    synesthesia-vibe)
+      return 0
+      ;;
+    *synesthesia-vibe-wasm*)
+      add_hit "$REL" "$LINE_NUMBER" "raw wasm module import" "$LINE"
+      ;;
+    *platform/web*)
+      add_hit "$REL" "$LINE_NUMBER" "platform/web internal import" "$LINE"
+      ;;
+    */js/*)
+      add_hit "$REL" "$LINE_NUMBER" "library internals import (/js/)" "$LINE"
+      ;;
+    ./*|../*)
+      if ! web_relative_resolves "$FILE" "$SPEC"; then
+        add_hit "$REL" "$LINE_NUMBER" "relative import outside this sample" "$LINE"
+      fi
+      ;;
+    *)
+      add_hit "$REL" "$LINE_NUMBER" "import other than synesthesia-vibe or a file inside this sample" "$LINE"
+      ;;
+  esac
+}
+
+check_js_code() {
+  local REL="$1" LINE_NUMBER="$2" FILE="$3" CODE="$4" LINE="$5" REST
+  REST="$CODE"
+  while [[ "$REST" =~ $JS_SPECIFIER_RE ]]; do
+    check_js_specifier "$REL" "$LINE_NUMBER" "$FILE" "${BASH_REMATCH[3]}" "$LINE"
+    REST="${REST#*"${BASH_REMATCH[0]}"}"
+  done
+  if [[ "$CODE" =~ $JS_FACTORY_RE ]]; then
+    add_hit "$REL" "$LINE_NUMBER" "createSynesthesiaVibeModule outside the public API" "$LINE"
+  fi
+}
+
+strip_js_comment() {
+  if [[ "$1" =~ ^[[:space:]]*// ]]; then
+    echo ""
+  else
+    echo "${1%%[[:space:];]//*}"
+  fi
+}
+
+check_script_src() {
+  local REL="$1" LINE_NUMBER="$2" FILE="$3" SRC="$4" LINE="$5"
+  case "$SRC" in
+    *synesthesia-vibe-wasm*|*platform/web*|*/js/*)
+      add_hit "$REL" "$LINE_NUMBER" "script src reaches library internals" "$LINE"
+      return 0
+      ;;
+    /*|*:*)
+      add_hit "$REL" "$LINE_NUMBER" "script src outside this sample" "$LINE"
+      return 0
+      ;;
+  esac
+  if ! web_relative_resolves "$FILE" "$SRC"; then
+    add_hit "$REL" "$LINE_NUMBER" "script src outside this sample" "$LINE"
+  fi
+}
+
+check_js_file() {
+  local F="$1" REL="$2" LINE LINE_NUMBER=0
+  while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+    LINE_NUMBER=$((LINE_NUMBER + 1))
+    check_js_code "$REL" "$LINE_NUMBER" "$F" "$(strip_js_comment "$LINE")" "$LINE"
+  done < "$F"
+}
+
+check_html_file() {
+  local F="$1" REL="$2" LINE LINE_NUMBER=0 IN_SCRIPT=0 ATTRS CODE
+  while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+    LINE_NUMBER=$((LINE_NUMBER + 1))
+    CODE=""
+    if [[ "$IN_SCRIPT" -eq 1 ]]; then
+      CODE="$LINE"
+    elif [[ "$LINE" =~ $HTML_SCRIPT_OPEN_RE ]]; then
+      ATTRS="${BASH_REMATCH[1]}"
+      if [[ " $ATTRS" =~ $HTML_SCRIPT_SRC_RE ]]; then
+        check_script_src "$REL" "$LINE_NUMBER" "$F" "${BASH_REMATCH[1]}" "$LINE"
+      elif ! [[ "$ATTRS" =~ $HTML_SCRIPT_DATA_TYPE_RE ]]; then
+        IN_SCRIPT=1
+        CODE="${LINE#*<script"$ATTRS">}"
+      fi
+    fi
+    if [[ "$IN_SCRIPT" -eq 1 ]]; then
+      if [[ "$CODE" == *"</script"* ]]; then
+        CODE="${CODE%%</script*}"
+        IN_SCRIPT=0
+      fi
+      check_js_code "$REL" "$LINE_NUMBER" "$F" "$(strip_js_comment "$CODE")" "$LINE"
+    fi
+  done < "$F"
+}
+
 FILES=()
+WEB_FILES=()
 LEGACY_SKIPPED=0
 if [[ -d "$LEGACY_DIR" ]]; then
   LEGACY_SKIPPED="$(find "$LEGACY_DIR" -type f | wc -l | tr -d ' ')"
@@ -205,8 +328,14 @@ if [[ -d "$SAMPLES_DIR" ]]; then
       -o -name '*.m' -o -name '*.mm' -o -name '*.swift' -o -name '*.kt' -o -name '*.kts' \
       -o -name '*.java' \) -print0 | sort -z)
 fi
+if [[ -d "$WEB_DIR" ]]; then
+  while IFS= read -r -d '' F; do
+    WEB_FILES+=("$F")
+  done < <(find "$WEB_DIR" -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.html' \
+      -o -name '*.htm' \) -print0 | sort -z)
+fi
 
-FILE_COUNT=${#FILES[@]}
+FILE_COUNT=$((${#FILES[@]} + ${#WEB_FILES[@]}))
 
 for F in ${FILES[@]+"${FILES[@]}"}; do
   REL="$(display_path "$F")"
@@ -255,6 +384,13 @@ for F in ${FILES[@]+"${FILES[@]}"}; do
       fi
     fi
   done < "$F"
+done
+
+for F in ${WEB_FILES[@]+"${WEB_FILES[@]}"}; do
+  case "$F" in
+    *.html|*.htm) check_html_file "$F" "$(display_path "$F")" ;;
+    *) check_js_file "$F" "$(display_path "$F")" ;;
+  esac
 done
 
 HIT_COUNT="$(grep -c . "$HITS_FILE" || true)"

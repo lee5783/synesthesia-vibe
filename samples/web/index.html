@@ -1,0 +1,72 @@
+<!--
+  index.html
+  SynesthesiaVibe
+
+  Created by lee5783 on 2026-10-12.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SynesthesiaVibe Web Sample</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">
+        { "imports": { "synesthesia-vibe": "./lib/synesthesia-vibe.js" } }
+    </script>
+    <script type="module" src="./main.js"></script>
+</head>
+<body>
+    <canvas id="visualizer" aria-label="Visualizer"></canvas>
+
+    <div id="error-banner" class="error-banner" role="alert" hidden>
+        <span id="error-text"></span>
+        <button id="error-dismiss" type="button" aria-label="Dismiss error">Dismiss</button>
+    </div>
+
+    <div id="overlay" class="overlay">
+        <div class="panel">
+            <h1>SynesthesiaVibe</h1>
+            <p id="load-status" class="load-status">Loading the module…</p>
+            <progress id="load-progress" max="1" value="0"></progress>
+            <button id="start-button" type="button" disabled>Start</button>
+            <p class="hint">Start resumes audio. Arrow keys switch presets, F toggles fullscreen.</p>
+        </div>
+    </div>
+
+    <div id="toolbar" class="toolbar" hidden>
+        <div class="group">
+            <button id="previous-preset" type="button" aria-label="Previous preset">&#9664;</button>
+            <select id="preset-select" aria-label="Preset"></select>
+            <button id="next-preset" type="button" aria-label="Next preset">&#9654;</button>
+            <button id="load-milk" type="button">Load .milk…</button>
+        </div>
+        <div class="group">
+            <label for="source-select">Audio</label>
+            <select id="source-select">
+                <option value="wav">Deterministic WAV</option>
+                <option value="microphone">Microphone</option>
+                <option value="file">Audio file…</option>
+                <option value="tab">Tab audio</option>
+            </select>
+            <button id="fullscreen-button" type="button">Fullscreen</button>
+        </div>
+        <div class="meters">
+            <div class="meter"><span>bass</span><div class="bar"><div id="meter-bass"></div></div><output id="value-bass">0.00</output></div>
+            <div class="meter"><span>mid</span><div class="bar"><div id="meter-mid"></div></div><output id="value-mid">0.00</output></div>
+            <div class="meter"><span>treb</span><div class="bar"><div id="meter-treble"></div></div><output id="value-treble">0.00</output></div>
+        </div>
+        <p id="status-line" class="status-line"></p>
+    </div>
+
+    <div id="capture-panel" class="capture-panel" hidden>
+        <h1>Capture</h1>
+        <p id="capture-status" class="capture-status">Starting…</p>
+        <ul id="capture-files"></ul>
+    </div>
+
+    <input id="milk-input" type="file" accept=".milk" hidden>
+    <input id="audio-input" type="file" accept="audio/*" hidden>
+    <audio id="audio-player" loop hidden></audio>
+</body>
+</html>

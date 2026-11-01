@@ -44,6 +44,7 @@ WHAT COUNTS AS A HIT
     - <Metal/...>, <MetalKit/...>
     - <jni.h>, <android/...>
     - <glad/...>
+    - <emscripten.h>, <emscripten/...>
     - <windows.h>
     - <TargetConditionals.h>
 
@@ -80,7 +81,7 @@ $PublicHeaderDir = $Dir -replace '\\', '/'
 # The platform/GL headers a backend-neutral public header must never pull in (C2-001/C2-017's
 # "no GL header in the public API" rule, extended to windows.h and TargetConditionals.h since a
 # public header reaching either would force a platform-specific toolchain on every consumer).
-$ForbiddenIncludePattern = '(?i)#\s*(?:include|import)\s*[<"](GL/[^">]+\.h|(?:GLES2|GLES3|OpenGLES|EGL|Metal|MetalKit|android|glad)/[^">]+|jni\.h|windows\.h|TargetConditionals\.h)[>"]'
+$ForbiddenIncludePattern = '(?i)#\s*(?:include|import)\s*[<"](GL/[^">]+\.h|(?:GLES2|GLES3|OpenGLES|EGL|Metal|MetalKit|android|glad|emscripten)/[^">]+|jni\.h|emscripten\.h|windows\.h|TargetConditionals\.h)[>"]'
 
 function Remove-LineComment
 {

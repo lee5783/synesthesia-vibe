@@ -50,8 +50,17 @@ WHAT COUNTS AS A VIOLATION
   Kotlin / Java (*.kt, *.kts, *.java):
     - import com.synesthesiavibe.internal.*;
     - System.loadLibrary (JNI loading belongs to platform/android only).
+  JavaScript under <root>/web (*.js, *.mjs, and inline <script> blocks in *.html / *.htm other
+  than type=importmap / JSON):
+    - an import specifier (import ... from, export ... from, import 'X', import('X')) other
+      than the bare specifier synesthesia-vibe or a relative path (./, ../) that resolves
+      inside <root>/web;
+    - a specifier containing synesthesia-vibe-wasm, platform/web or /js/ is always a violation;
+    - any use of createSynesthesiaVibeModule (the raw Emscripten factory is not public API);
+    - <script src="X"> in HTML where X is not a relative path resolving inside <root>/web.
 
-  Text after // on a line is ignored.
+  Text after // on a line is ignored (for JavaScript only when // starts the line or follows
+  whitespace or ;, so URLs inside strings are kept). <!-- --> and /* */ are not stripped.
 
 EXIT CODE
 
@@ -132,6 +141,12 @@ $ObjcModulePattern = '^\s*@import\s+([A-Za-z_][A-Za-z0-9_]*)'
 $SwiftImportPattern = '^\s*(?:@[A-Za-z_]+\s+)*import\s+(?:(?:typealias|struct|class|enum|protocol|let|var|func)\s+)?([A-Za-z_][A-Za-z0-9_]*)'
 $JvmInternalPattern = '^\s*import\s+(?:static\s+)?com\.synesthesiavibe\.internal(?:[.;\s]|$)'
 $LoadLibraryPattern = 'System\s*\.\s*loadLibrary'
+$JsSpecifierPattern = '(?:^|[^A-Za-z0-9_$.])(?:from|import)\s*\(?\s*[''"`]([^''"`]+)[''"`]'
+$JsFactoryPattern = 'createSynesthesiaVibeModule'
+$HtmlScriptOpenPattern = '<script([^>]*)>'
+$HtmlScriptSrcPattern = '\ssrc\s*=\s*[''"]?([^''"\s>]+)'
+$HtmlScriptDataTypePattern = 'type\s*=\s*[''"]?[^''"\s>]*(?:importmap|json)'
+$WebDir = Join-Path $SamplesDir "web"
 
 function Remove-LineComment
 {
@@ -192,6 +207,108 @@ function Test-ResolvesInSample
     return ($null -ne $match)
 }
 
+function Test-WebRelativeResolves
+{
+    param([string]$FilePath, [string]$Name)
+    $target = Join-Path (Split-Path -Parent $FilePath) $Name
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { return $false }
+    $targetDir = Split-Path -Parent (Resolve-Path -LiteralPath $target).Path
+    return ($targetDir -eq $WebDir -or $targetDir.StartsWith($WebDir + [System.IO.Path]::DirectorySeparatorChar))
+}
+
+function Test-JsSpecifier
+{
+    param([string]$Rel, [int]$LineNumber, [string]$FilePath, [string]$Spec, [string]$Text)
+    if ($Spec -ceq "synesthesia-vibe") { return }
+    if ($Spec.Contains("synesthesia-vibe-wasm")) { Add-Hit $Rel $LineNumber "raw wasm module import" $Text }
+    elseif ($Spec.Contains("platform/web")) { Add-Hit $Rel $LineNumber "platform/web internal import" $Text }
+    elseif ($Spec.Contains("/js/")) { Add-Hit $Rel $LineNumber "library internals import (/js/)" $Text }
+    elseif ($Spec.StartsWith("./") -or $Spec.StartsWith("../"))
+    {
+        if (-not (Test-WebRelativeResolves -FilePath $FilePath -Name $Spec)) { Add-Hit $Rel $LineNumber "relative import outside this sample" $Text }
+    }
+    else { Add-Hit $Rel $LineNumber "import other than synesthesia-vibe or a file inside this sample" $Text }
+}
+
+function Remove-JsLineComment
+{
+    param([string]$Line)
+    return ($Line -replace '(?:^\s*|[\s;])//.*$', '')
+}
+
+function Test-JsCode
+{
+    param([string]$Rel, [int]$LineNumber, [string]$FilePath, [string]$Code, [string]$Text)
+    foreach ($m in [regex]::Matches($Code, $JsSpecifierPattern))
+    {
+        Test-JsSpecifier $Rel $LineNumber $FilePath $m.Groups[1].Value $Text
+    }
+    if ($Code -cmatch $JsFactoryPattern) { Add-Hit $Rel $LineNumber "createSynesthesiaVibeModule outside the public API" $Text }
+}
+
+function Test-ScriptSrc
+{
+    param([string]$Rel, [int]$LineNumber, [string]$FilePath, [string]$Src, [string]$Text)
+    if ($Src.Contains("synesthesia-vibe-wasm") -or $Src.Contains("platform/web") -or $Src.Contains("/js/"))
+    {
+        Add-Hit $Rel $LineNumber "script src reaches library internals" $Text
+    }
+    elseif ($Src.StartsWith("/") -or $Src.Contains(":") -or -not (Test-WebRelativeResolves -FilePath $FilePath -Name $Src))
+    {
+        Add-Hit $Rel $LineNumber "script src outside this sample" $Text
+    }
+}
+
+function Test-JsFile
+{
+    param([string]$FilePath, [string]$Rel)
+    $lines = @(Get-Content -Path $FilePath)
+    for ($i = 0; $i -lt $lines.Count; $i++)
+    {
+        Test-JsCode $Rel ($i + 1) $FilePath (Remove-JsLineComment -Line $lines[$i]) $lines[$i]
+    }
+}
+
+function Test-HtmlFile
+{
+    param([string]$FilePath, [string]$Rel)
+    $lines = @(Get-Content -Path $FilePath)
+    $inScript = $false
+    for ($i = 0; $i -lt $lines.Count; $i++)
+    {
+        $line = $lines[$i]
+        $code = ""
+        if ($inScript)
+        {
+            $code = $line
+        }
+        elseif ($line -cmatch $HtmlScriptOpenPattern)
+        {
+            $attrs = $Matches[1]
+            $openTag = $Matches[0]
+            if ((" " + $attrs) -cmatch $HtmlScriptSrcPattern)
+            {
+                Test-ScriptSrc $Rel ($i + 1) $FilePath $Matches[1] $line
+            }
+            elseif (-not ($attrs -cmatch $HtmlScriptDataTypePattern))
+            {
+                $inScript = $true
+                $code = $line.Substring($line.IndexOf($openTag) + $openTag.Length)
+            }
+        }
+        if ($inScript)
+        {
+            $closeIdx = $code.IndexOf("</script")
+            if ($closeIdx -ge 0)
+            {
+                $code = $code.Substring(0, $closeIdx)
+                $inScript = $false
+            }
+            Test-JsCode $Rel ($i + 1) $FilePath (Remove-JsLineComment -Line $code) $line
+        }
+    }
+}
+
 $legacySkipped = 0
 if (Test-Path $LegacyDir)
 {
@@ -205,6 +322,14 @@ if (Test-Path $SamplesDir)
     $legacyPrefix = $LegacyDir + [System.IO.Path]::DirectorySeparatorChar
     $sampleFiles = @(Get-ChildItem -Path $SamplesDir -Recurse -File |
         Where-Object { -not $_.FullName.StartsWith($legacyPrefix) -and ($extensions -contains $_.Extension.ToLowerInvariant()) } |
+        Sort-Object FullName)
+}
+$webExtensions = @(".js", ".mjs", ".html", ".htm")
+$webFiles = @()
+if (Test-Path $WebDir)
+{
+    $webFiles = @(Get-ChildItem -Path $WebDir -Recurse -File |
+        Where-Object { $webExtensions -contains $_.Extension.ToLowerInvariant() } |
         Sort-Object FullName)
 }
 
@@ -270,6 +395,15 @@ foreach ($f in $sampleFiles)
     }
 }
 
+foreach ($f in $webFiles)
+{
+    $rel = Get-DisplayPath -FullPath $f.FullName
+    $ext = $f.Extension.ToLowerInvariant()
+    if ($ext -eq ".html" -or $ext -eq ".htm") { Test-HtmlFile -FilePath $f.FullName -Rel $rel }
+    else { Test-JsFile -FilePath $f.FullName -Rel $rel }
+}
+
+$fileCount = $sampleFiles.Count + $webFiles.Count
 $pass = ($hits.Count -eq 0)
 
 $reportPath = Join-Path $Out "check-report.md"
@@ -278,7 +412,7 @@ $displayLegacy = Get-DisplayPath -FullPath $LegacyDir
 $reportLines = New-Object System.Collections.Generic.List[string]
 $reportLines.Add("# Sample include check (public API only)")
 $reportLines.Add("")
-$reportLines.Add("Static source scan (no build). Files checked under ``$displayDir/``: $($sampleFiles.Count).")
+$reportLines.Add("Static source scan (no build). Files checked under ``$displayDir/``: $fileCount.")
 $reportLines.Add("")
 $reportLines.Add("legacy-samples skipped: ``$displayLegacy/`` ($legacySkipped files, exempt).")
 $reportLines.Add("")
@@ -295,7 +429,7 @@ if ($hits.Count -gt 0)
 }
 $reportLines | Out-File -FilePath $reportPath -Encoding utf8
 
-Write-Host "Sample files checked: $($sampleFiles.Count)"
+Write-Host "Sample files checked: $fileCount"
 Write-Host "legacy-samples skipped ($legacySkipped files)"
 Write-Host "Sample include violations: $($hits.Count)"
 Write-Host "Report written to $reportPath"
