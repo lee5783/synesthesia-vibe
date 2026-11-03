@@ -18,6 +18,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger texsizeX;
 @property (nonatomic, assign) NSInteger texsizeY;
 @property (nonatomic, assign) float fpsHint;
+@property (nonatomic, assign) float maxFps;
+@property (nonatomic, assign) float maxLuminance;
+@property (nonatomic, assign) float flashLimit;
 
 @property (nonatomic, copy, nullable) NSURL *resourceURL;
 @property (nonatomic, copy, nullable) NSURL *textureSearchURL;

@@ -18,6 +18,7 @@
 #include "disk_textures.h"
 #include "draw_program.h"
 #include "frame_targets.h"
+#include "luminance_limiter.h"
 #include "mesh.h"
 #include "mesh_buffer.h"
 #include "noise_textures.h"
@@ -45,12 +46,14 @@ struct BdGlPipeline
     render_gl::PresetShaderInputs compInputs;
     render_gl::MeshBuffer compMesh;
     render_gl::CompositeGrid compGrid;
+    render_gl::LuminanceLimiter limiter;
 
     std::vector<render_core::Vertex> warpVerts;
 
     std::string blurDumpDir;
 
     int highestBlurTexUsed;
+    int presentBlurTexUsed;
     int forcedBlurLevels;
     int blurDumpFrame;
     int warpIndexCount;
@@ -59,6 +62,7 @@ struct BdGlPipeline
     bool compShaderActive;
     bool resourcesBuilt;
     bool ready;
+    bool limiterEnabled;
 };
 
 void BdGlPipelineCreate(sv_context* ctx);
@@ -67,5 +71,8 @@ void BdGlPipelineDestroy(sv_context* ctx);
 std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetDir);
 
 void BdGlRenderFrame(sv_context* ctx, uint32_t targetFbo);
+void BdGlBeginFrame(sv_context* ctx);
+void BdGlStepFrame(sv_context* ctx);
+void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo);
 
 #endif

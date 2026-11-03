@@ -104,7 +104,15 @@ export class AudioInput {
         let stream;
 
         try {
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: "include" });
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                },
+                systemAudio: "include"
+            });
         } catch (error) {
             throw new SynesthesiaError(SynesthesiaError.SV_ERR_IO, "display capture unavailable: " + error.message);
         }

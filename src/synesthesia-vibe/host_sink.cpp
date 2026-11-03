@@ -73,15 +73,15 @@ float BdHostSink::Now()
 }
 
 BdRawClock::BdRawClock()
-    : m_deterministic(false)
+    : m_fixedStep(false)
     , m_ticks(0)
     , m_tickDelta(0)
 {
 }
 
-void BdRawClock::SetDeterministic(bool deterministic)
+void BdRawClock::SetFixedStep(bool fixedStep)
 {
-    m_deterministic = deterministic;
+    m_fixedStep = fixedStep;
 }
 
 void BdRawClock::SetTickDelta(long long tickDelta)
@@ -91,7 +91,7 @@ void BdRawClock::SetTickDelta(long long tickDelta)
 
 void BdRawClock::Advance()
 {
-    if (m_deterministic)
+    if (m_fixedStep)
         m_ticks += m_tickDelta;
     else
         m_ticks = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(

@@ -185,7 +185,7 @@ namespace
 
     void BdGlStageBlur(sv_context* ctx, BdGlPipeline* gl)
     {
-        const int levelsUsed = std::max(gl->highestBlurTexUsed, gl->forcedBlurLevels);
+        const int levelsUsed = std::max(std::max(gl->highestBlurTexUsed, gl->forcedBlurLevels), gl->presentBlurTexUsed);
         gl->highestBlurTexUsed = 0;
 
         if (levelsUsed <= 0)
@@ -277,7 +277,8 @@ namespace
         BdGlSetPixelCenterOffset(ctx, gl, false);
     }
 
-    void BdGlStageComposite(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo)
+    void BdGlStageComposite(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
+        render_gl::Texture& noShaderSource)
     {
         const float time = static_cast<float>(ctx->timeModel.GetTime());
 
@@ -318,45 +319,120 @@ namespace
 
             shaderShow.frame = BdMakePresetFrameInput(ctx, gl, &frameContext);
 
-            render_gl::ShowToUserShaders(shaderShow, gl->compInputs, gl->compGrid, gl->compMesh,
-                gl->targets.Source().ColorTexture());
+            render_gl::ShowToUserShaders(shaderShow, gl->compInputs, gl->compGrid, gl->compMesh, compSource);
             return;
         }
 
         BdGlSetPixelCenterOffset(gl, true, ctx->width, ctx->height);
-        render_gl::ShowToUserNoShaders(show, gl->texturedProgram, gl->untexturedProgram, gl->quadMesh,
-            gl->targets.Dest().ColorTexture());
+        render_gl::ShowToUserNoShaders(show, gl->texturedProgram, gl->untexturedProgram, gl->quadMesh, noShaderSource);
         BdGlSetPixelCenterOffset(gl, false, ctx->width, ctx->height);
+    }
+
+    void BdGlCompositeToTarget(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
+        render_gl::Texture& noShaderSource)
+    {
+        if (!gl->limiterEnabled)
+        {
+            BdGlStageComposite(ctx, gl, targetFbo, compSource, noShaderSource);
+            return;
+        }
+
+        const float time = static_cast<float>(ctx->timeModel.GetTime());
+        const float dt = std::min(std::max(time - ctx->limiterLastTime, 0.0f), 0.25f);
+        ctx->limiterLastTime = time;
+
+        BdGlStageComposite(ctx, gl, gl->limiter.SceneFramebufferId(), compSource, noShaderSource);
+
+        render_gl::LuminanceLimiterInput input;
+        input.maxLuminance = ctx->config.max_luminance;
+        input.flashLimit = ctx->config.flash_limit;
+        input.dtSeconds = dt;
+
+        gl->limiter.Apply(input, targetFbo);
+    }
+
+    void BdGlUploadAudio(BdGlPipeline* gl, sv_context* ctx)
+    {
+        const bool bAudioSampled = (gl->warpShaderActive && gl->warpInputs.UsesAudio()) ||
+            (gl->compShaderActive && gl->compInputs.UsesAudio());
+
+        if (bAudioSampled)
+            gl->audio.Upload(ctx->fftSmoothed, ctx->fftPeak, ctx->sound.fWaveform[0], ctx->sound.fWaveform[1]);
+    }
+
+    void BdGlRunSimulationStages(sv_context* ctx, BdGlPipeline* gl)
+    {
+        BdGlStageMotionVectors(ctx, gl);
+        BdGlStageFirstFrameClear(ctx, gl);
+        BdGlStageWarp(ctx, gl);
+        BdGlStageBlur(ctx, gl);
+        BdGlStageCustomShapes(ctx, gl);
+        BdGlStageCustomWaves(ctx, gl);
+        BdGlStageWave(ctx, gl);
+        BdGlStageBorders(ctx, gl);
+    }
+
+    BdGlPipeline* BdGlReadyPipeline(sv_context* ctx)
+    {
+        if (ctx == nullptr || ctx->gl == nullptr || !ctx->gl->ready)
+            return nullptr;
+
+        return ctx->gl;
     }
 }
 
 void BdGlRenderFrame(sv_context* ctx, uint32_t targetFbo)
 {
-    if (ctx == nullptr || ctx->gl == nullptr || !ctx->gl->ready)
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
         return;
 
-    BdGlPipeline* gl = ctx->gl;
-
     render_gl::SetDefaultDrawState();
+    BdGlUploadAudio(gl, ctx);
 
-    const bool bAudioSampled = (gl->warpShaderActive && gl->warpInputs.UsesAudio()) ||
-        (gl->compShaderActive && gl->compInputs.UsesAudio());
-
-    if (bAudioSampled)
-        gl->audio.Upload(ctx->fftSmoothed, ctx->fftPeak, ctx->sound.fWaveform[0], ctx->sound.fWaveform[1]);
-
-    BdGlStageMotionVectors(ctx, gl);
-    BdGlStageFirstFrameClear(ctx, gl);
-    BdGlStageWarp(ctx, gl);
-    BdGlStageBlur(ctx, gl);
-    BdGlStageCustomShapes(ctx, gl);
-    BdGlStageCustomWaves(ctx, gl);
-    BdGlStageWave(ctx, gl);
-    BdGlStageBorders(ctx, gl);
-    BdGlStageComposite(ctx, gl, targetFbo);
+    BdGlRunSimulationStages(ctx, gl);
+    BdGlCompositeToTarget(ctx, gl, targetFbo, gl->targets.Source().ColorTexture(), gl->targets.Dest().ColorTexture());
 
     gl->targets.Swap();
     ctx->framesSinceResize++;
 
     gl->glErrorCount += render_gl::DrainGlErrors("BdGlRenderFrame");
+}
+
+void BdGlBeginFrame(sv_context* ctx)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    render_gl::SetDefaultDrawState();
+    BdGlUploadAudio(gl, ctx);
+}
+
+void BdGlStepFrame(sv_context* ctx)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    render_gl::SetDefaultDrawState();
+    BdGlRunSimulationStages(ctx, gl);
+
+    gl->targets.Swap();
+    ctx->framesSinceResize++;
+
+    gl->glErrorCount += render_gl::DrainGlErrors("BdGlStepFrame");
+}
+
+void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    render_gl::SetDefaultDrawState();
+    BdGlCompositeToTarget(ctx, gl, targetFbo, gl->targets.Dest().ColorTexture(), gl->targets.Source().ColorTexture());
+    gl->presentBlurTexUsed = gl->highestBlurTexUsed;
+
+    gl->glErrorCount += render_gl::DrainGlErrors("BdGlPresentFrame");
 }

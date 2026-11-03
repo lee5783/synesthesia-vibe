@@ -6,9 +6,11 @@
 //
 
 #import "SVContext+Internal.h"
+#import "SVAudioInput+Internal.h"
 
 #include <TargetConditionals.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <string.h>
 
 #if TARGET_OS_OSX
@@ -22,6 +24,10 @@ NSErrorDomain const SVErrorDomain = @"SVErrorDomain";
 namespace
 {
     constexpr const char* kRendererUnavailablePrefix = "renderer unavailable";
+    constexpr size_t kValidateErrorBytes = 1024;
+    constexpr float kDefaultPlaybackRate = 1.0f;
+    constexpr float kMinimumPlaybackRate = 0.125f;
+    constexpr float kMaximumPlaybackRate = 8.0f;
 
 #if TARGET_OS_OSX
     constexpr const char* kGlFrameworkPath = "/System/Library/Frameworks/OpenGL.framework/OpenGL";
@@ -86,6 +92,17 @@ namespace
 
         return SVErrorArgument;
     }
+
+    BOOL SVValidationResult(sv_status status, const char* message, NSError** error)
+    {
+        if (status == SV_OK)
+            return YES;
+
+        if (error != nullptr)
+            *error = SVMakeError(SVErrorCodeForStatus(status), [NSString stringWithUTF8String:message] ?: @"");
+
+        return NO;
+    }
 }
 
 NSError* SVMakeError(NSInteger code, NSString* message)
@@ -93,6 +110,11 @@ NSError* SVMakeError(NSInteger code, NSString* message)
     return [NSError errorWithDomain:SVErrorDomain
                                code:code
                            userInfo:@{ NSLocalizedDescriptionKey: message ?: @"" }];
+}
+
+float SVNormalizedPlaybackRate(float rate)
+{
+    return isfinite(rate) ? fminf(fmaxf(rate, kMinimumPlaybackRate), kMaximumPlaybackRate) : kDefaultPlaybackRate;
 }
 
 @interface SVContext ()
@@ -105,6 +127,7 @@ NSError* SVMakeError(NSInteger code, NSString* message)
 @implementation SVContext
 {
     sv_context* _context;
+    float _playbackRate;
 #if DEBUG
     NSThread* _renderThread;
 #endif
@@ -118,6 +141,7 @@ NSError* SVMakeError(NSInteger code, NSString* message)
         return nil;
 
     _configuration = [configuration copy];
+    _playbackRate = kDefaultPlaybackRate;
 #if DEBUG
     _renderThread = [NSThread currentThread];
 #endif
@@ -157,6 +181,9 @@ NSError* SVMakeError(NSInteger code, NSString* message)
     config.pin_mouse = _configuration.pinMouse;
     config.mouse_x = _configuration.mouseX;
     config.mouse_y = _configuration.mouseY;
+    config.max_fps = _configuration.maxFps;
+    config.max_luminance = _configuration.maxLuminance;
+    config.flash_limit = _configuration.flashLimit;
 
     _context = sv_create(&config);
 
@@ -180,7 +207,26 @@ NSError* SVMakeError(NSInteger code, NSString* message)
         return nil;
     }
 
+    SVRegisterAudioSinkContext(self);
     return self;
+}
+
++ (BOOL)validatePresetAtURL:(NSURL *)url error:(NSError **)error
+{
+    char message[kValidateErrorBytes] = {};
+
+    if (!url.isFileURL)
+        return SVValidationResult(SV_ERR_ARG, "sv_validate_preset: path is empty", error);
+
+    return SVValidationResult(sv_validate_preset(url.fileSystemRepresentation, message, sizeof(message)), message, error);
+}
+
++ (BOOL)validatePresetText:(NSString *)text error:(NSError **)error
+{
+    char message[kValidateErrorBytes] = {};
+    NSData* bytes = [text dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    const char* utf8 = bytes.length > 0 ? static_cast<const char*>(bytes.bytes) : "";
+    return SVValidationResult(sv_validate_preset_memory(utf8, bytes.length, message, sizeof(message)), message, error);
 }
 
 - (void)dealloc
@@ -277,6 +323,19 @@ NSError* SVMakeError(NSInteger code, NSString* message)
 
     sv_resume(_context);
     self.paused = NO;
+}
+
+- (float)playbackRate
+{
+    return _playbackRate;
+}
+
+- (void)setPlaybackRate:(float)playbackRate
+{
+    _playbackRate = SVNormalizedPlaybackRate(playbackRate);
+
+    if (_context != nullptr)
+        sv_set_playback_rate(_context, _playbackRate);
 }
 
 - (SVAudioLevels)audioLevels

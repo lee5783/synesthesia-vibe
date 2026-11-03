@@ -24,6 +24,7 @@ import com.synesthesiavibe.SynesthesiaContext
 import com.synesthesiavibe.SynesthesiaException
 import com.synesthesiavibe.SynesthesiaRenderer
 import com.synesthesiavibe.WavFeeder
+import java.io.File
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -35,6 +36,13 @@ class VisualizerController(
     widthPixels: Int,
     heightPixels: Int,
     private val preserveEglContext: Boolean,
+    maxFps: Float,
+    maxLuminance: Float,
+    flashLimit: Float,
+    playbackRate: Float,
+    private val validatePath: File?,
+    private val validateText: String?,
+    private val temporaryDirectory: File,
 ) {
 
     var preset by mutableStateOf(initialPreset)
@@ -48,10 +56,14 @@ class VisualizerController(
         SynesthesiaConfiguration.builder()
             .setSize(widthPixels, heightPixels)
             .setResourcePath(library.resourceRoot)
+            .setMaxFps(maxFps)
+            .setMaxLuminance(maxLuminance)
+            .setFlashLimit(flashLimit)
             .build(),
         object : SynesthesiaRenderer.Listener {
             override fun onContextCreated(context: SynesthesiaContext) {
                 Log.i(TAG, "context created")
+                validateRequested()
                 load(context, loadedPreset, 0f)
             }
 
@@ -62,6 +74,10 @@ class VisualizerController(
         },
     )
     private val wavFeeder: WavFeeder? = library.defaultWav?.let(::WavFeeder)
+
+    init {
+        setPlaybackRate(playbackRate)
+    }
     private var surface: GLSurfaceView? = null
     private var liveInput: LiveInput? = null
 
@@ -109,6 +125,11 @@ class VisualizerController(
         preset = next
         loadedPreset = next
         surface?.queueEvent { renderer.context?.let { load(it, next, BLEND_SECONDS) } }
+    }
+
+    fun setPlaybackRate(rate: Float) {
+        renderer.playbackRate = rate
+        Log.i(TAG, "playback rate $rate")
     }
 
     fun useWav() {
@@ -178,6 +199,20 @@ class VisualizerController(
         if (!feedsWav) return
         val deltaSeconds = if (last == 0L) FRAME_SECONDS else ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FEED_SECONDS)
         wavFeeder?.feed(context, deltaSeconds)
+    }
+
+    private fun validateRequested() {
+        validatePath?.let { path -> logValidation("path=${path.path}") { SynesthesiaContext.validatePreset(path) } }
+        validateText?.let { text -> logValidation("text length=${text.length}") { SynesthesiaContext.validatePresetText(text, temporaryDirectory) } }
+    }
+
+    private fun logValidation(target: String, validate: () -> Unit) {
+        runCatching(validate)
+            .onSuccess { Log.i(TAG, "validate $target status=SV_OK") }
+            .onFailure {
+                val status = (it as? SynesthesiaException)?.status ?: it.javaClass.simpleName
+                Log.i(TAG, "validate $target status=$status message=${it.message}")
+            }
     }
 
     private fun load(context: SynesthesiaContext, target: Preset, blendSeconds: Float) {

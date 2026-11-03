@@ -16,6 +16,14 @@ static const CGFloat MainWindowSidebarWidth = 260.0;
 static const NSTimeInterval MainWindowLevelsInterval = 0.25;
 static NSString *const MainWindowDefaultPresetName = @"shifter - swarm.milk";
 static NSUserInterfaceItemIdentifier const MainWindowPresetColumn = @"preset";
+static NSArray<NSNumber *> *MainWindowFrameRates(void)
+{
+    return @[ @0, @60, @30, @15 ];
+}
+static NSArray<NSNumber *> *MainWindowRenderScales(void)
+{
+    return @[ @1.0, @0.75, @0.5, @0.25 ];
+}
 
 @interface MainWindowController () <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, VisualizerViewControllerDelegate>
 
@@ -26,6 +34,8 @@ static NSUserInterfaceItemIdentifier const MainWindowPresetColumn = @"preset";
 @property (nonatomic, strong) NSButton *microphoneCheckbox;
 @property (nonatomic, strong) NSButton *systemAudioCheckbox;
 @property (nonatomic, strong) NSButton *pausedCheckbox;
+@property (nonatomic, strong) NSPopUpButton *frameRatePopUp;
+@property (nonatomic, strong) NSPopUpButton *renderScalePopUp;
 @property (nonatomic, strong) NSTextField *levelsLabel;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong, nullable) NSTimer *levelsTimer;
@@ -118,6 +128,26 @@ static NSUserInterfaceItemIdentifier const MainWindowPresetColumn = @"preset";
     self.systemAudioCheckbox.enabled = SVSystemAudioInput.supported;
     self.pausedCheckbox = [NSButton checkboxWithTitle:@"Paused" target:self action:@selector(togglePaused:)];
 
+    self.frameRatePopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *frameRate in MainWindowFrameRates())
+        [self.frameRatePopUp addItemWithTitle:frameRate.floatValue > 0.0f ? [NSString stringWithFormat:@"%.0f fps", frameRate.floatValue] : @"Display rate"];
+    self.frameRatePopUp.target = self;
+    self.frameRatePopUp.action = @selector(changeFrameRate:);
+    NSUInteger frameRateIndex = [MainWindowFrameRates() indexOfObject:@(self.visualizerViewController.preferredFramesPerSecond)];
+    if (frameRateIndex == NSNotFound)
+        [self.frameRatePopUp addItemWithTitle:[NSString stringWithFormat:@"%.0f fps", self.visualizerViewController.preferredFramesPerSecond]];
+    [self.frameRatePopUp selectItemAtIndex:frameRateIndex != NSNotFound ? (NSInteger)frameRateIndex : self.frameRatePopUp.numberOfItems - 1];
+
+    self.renderScalePopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *renderScale in MainWindowRenderScales())
+        [self.renderScalePopUp addItemWithTitle:[NSString stringWithFormat:@"Render scale %.0f%%", renderScale.doubleValue * 100.0]];
+    self.renderScalePopUp.target = self;
+    self.renderScalePopUp.action = @selector(changeRenderScale:);
+    NSUInteger renderScaleIndex = [MainWindowRenderScales() indexOfObject:@(self.visualizerViewController.renderScale)];
+    [self.renderScalePopUp selectItemAtIndex:renderScaleIndex != NSNotFound ? (NSInteger)renderScaleIndex : 0];
+
+    NSButton *snapshotButton = [NSButton buttonWithTitle:@"Save Snapshot…" target:self action:@selector(saveSnapshot:)];
+
     self.levelsLabel = [NSTextField labelWithString:@""];
     self.levelsLabel.font = [NSFont monospacedDigitSystemFontOfSize:NSFont.smallSystemFontSize weight:NSFontWeightRegular];
 
@@ -132,6 +162,10 @@ static NSUserInterfaceItemIdentifier const MainWindowPresetColumn = @"preset";
         self.microphoneCheckbox,
         self.systemAudioCheckbox,
         self.pausedCheckbox,
+        [NSTextField labelWithString:@"View"],
+        self.frameRatePopUp,
+        self.renderScalePopUp,
+        snapshotButton,
         self.levelsLabel,
         self.statusLabel
     ]];
@@ -237,6 +271,39 @@ static NSUserInterfaceItemIdentifier const MainWindowPresetColumn = @"preset";
 - (void)togglePaused:(NSButton *)sender
 {
     self.visualizerViewController.paused = sender.state == NSControlStateValueOn;
+}
+
+- (void)changeFrameRate:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    if (index >= 0 && (NSUInteger)index < MainWindowFrameRates().count)
+        self.visualizerViewController.preferredFramesPerSecond = MainWindowFrameRates()[(NSUInteger)index].floatValue;
+}
+
+- (void)changeRenderScale:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    if (index >= 0 && (NSUInteger)index < MainWindowRenderScales().count)
+        self.visualizerViewController.renderScale = (CGFloat)MainWindowRenderScales()[(NSUInteger)index].doubleValue;
+}
+
+- (void)saveSnapshot:(id)sender
+{
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.allowedContentTypes = @[ UTTypePNG ];
+    panel.nameFieldStringValue = @"synesthesia-vibe-snapshot.png";
+    __weak MainWindowController *weakSelf = self;
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result != NSModalResponseOK || panel.URL == nil)
+            return;
+        NSURL *url = panel.URL;
+        [weakSelf.visualizerViewController saveSnapshotToURL:url completion:^(NSError *error) {
+            if (error != nil)
+                [weakSelf showError:error];
+            else
+                [weakSelf showStatus:[NSString stringWithFormat:@"Saved %@", url.lastPathComponent] isError:NO];
+        }];
+    }];
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView

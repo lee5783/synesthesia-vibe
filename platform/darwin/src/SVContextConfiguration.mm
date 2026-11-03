@@ -53,6 +53,9 @@ namespace
     copy.texsizeX = self.texsizeX;
     copy.texsizeY = self.texsizeY;
     copy.fpsHint = self.fpsHint;
+    copy.maxFps = self.maxFps;
+    copy.maxLuminance = self.maxLuminance;
+    copy.flashLimit = self.flashLimit;
     copy.resourceURL = self.resourceURL;
     copy.textureSearchURL = self.textureSearchURL;
     copy.cacheURL = self.cacheURL;

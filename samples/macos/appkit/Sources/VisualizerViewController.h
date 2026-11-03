@@ -34,8 +34,12 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 @property (nonatomic, copy, readonly, nullable) NSURL *wavURL;
 @property (nonatomic, assign, readonly) VisualizerAudioSource audioSource;
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
+@property (nonatomic, assign) float preferredFramesPerSecond;
+@property (nonatomic, assign) CGFloat renderScale;
+@property (nonatomic, assign) float playbackRate;
 
 - (void)loadPresetAtURL:(NSURL *)url;
+- (void)saveSnapshotToURL:(NSURL *)url completion:(void (^)(NSError *_Nullable error))completion;
 - (BOOL)playWavAtURL:(NSURL *)url error:(NSError **)error;
 - (BOOL)selectAudioSource:(VisualizerAudioSource)audioSource error:(NSError **)error;
 

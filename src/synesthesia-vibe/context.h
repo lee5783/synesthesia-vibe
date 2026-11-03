@@ -43,6 +43,12 @@ constexpr int kBeatdropDefaultGridY = 48;
 constexpr float kBeatdropDefaultFps = 60.0f;
 constexpr float kBeatdropTimeVariableResetDelay = 250000.0f;
 constexpr bool kBeatdropScreenDependentRenderMode = true;
+constexpr double kBeatdropSimulationStepSeconds = 1.0 / 60.0;
+constexpr int kBeatdropMaxSimulationStepsPerFrame = 16;
+constexpr double kBeatdropMaxFrameDtSeconds = 1.0;
+constexpr float kBeatdropMinPlaybackRate = 0.125f;
+constexpr float kBeatdropMaxPlaybackRate = 8.0f;
+constexpr float kBeatdropDisplayFpsDamping = 0.9f;
 
 struct BdGlPipeline;
 
@@ -74,6 +80,13 @@ struct sv_context
     float lastBlendSeconds;
     double lastFrameDt;
     uint32_t lastTargetFbo;
+
+    float playbackRate;
+    double stepAccumulator;
+    double lastWallSeconds;
+    bool resumePending;
+    float displayFps;
+    float limiterLastTime;
 
     int width;
     int height;

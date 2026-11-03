@@ -8,6 +8,8 @@
 #include "context.h"
 #include "gl_pipeline.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -304,6 +306,191 @@ FrameInputs BdMakeFrameInputs(sv_context* ctx)
         ctx->totalSeconds };
 }
 
+namespace
+{
+    void BdStepSimulationClock(sv_context* ctx)
+    {
+        ctx->rawClock.Advance();
+        ctx->timeModel.Step(ctx->frame, ctx->rawClock, kBeatdropTimeVariableResetDelay, false);
+
+        if (ctx->timeModel.TimeWasReset())
+        {
+            ctx->presetStartTime = static_cast<float>(ctx->timeModel.GetTime());
+            ctx->nextPresetTime = -1.0f;
+            ctx->nextPresetTimeWasInitialized = false;
+        }
+    }
+
+    void BdAnalyzeAudio(sv_context* ctx, float fps)
+    {
+        const float time = static_cast<float>(ctx->timeModel.GetTime());
+
+        GetAudioBuf(ctx->pcmLeft, ctx->pcmRight, kBeatdropPcmWindow);
+        AnalyzeNewSoundAudio(ctx->pcmLeft, ctx->pcmRight, fps, ctx->sound, ctx->fft);
+        BdAlignWaves(ctx);
+
+        ComputeCustomSoundAnalysis(ctx->analysisSettings, fps, ctx->frame,
+            ctx->state->m_fFFTAttack.eval(time), ctx->state->m_fFFTDecay.eval(time),
+            ctx->freezeBeatDetection, ctx->frozenBeatDetection, ctx->sound, ctx->mysound,
+            ctx->fft, ctx->fftShader, ctx->fftSmoothed, ctx->fftPeak, ctx->nFftPeakHold);
+    }
+
+    void BdRunFrameEquations(sv_context* ctx)
+    {
+        const float time = static_cast<float>(ctx->timeModel.GetTime());
+        const float fps = ctx->timeModel.GetFps();
+
+        BdSampleContextSources(ctx);
+
+        float nextPresetTimeRandomDraw = 0.0f;
+        if (ctx->nextPresetTime < 0.0f)
+            nextPresetTimeRandomDraw = BdDrawRandom(ctx);
+
+        FrameUpdateInput frameDriverInput = {};
+        frameDriverInput.frame = ctx->frame;
+        frameDriverInput.redraw = false;
+        frameDriverInput.time = static_cast<double>(time);
+        frameDriverInput.fps = fps;
+        frameDriverInput.nextPresetTime = ctx->nextPresetTime;
+        frameDriverInput.nextPresetTimeRandomDraw = nextPresetTimeRandomDraw;
+        frameDriverInput.timeBetweenPresetsRand = kBeatdropTimeBetweenPresetsRand;
+        frameDriverInput.blendTimeAuto = kBeatdropBlendTimeAuto;
+        frameDriverInput.timeBetweenPresets = kBeatdropTimeBetweenPresets;
+        frameDriverInput.isBlending = ctx->state->m_bBlending;
+        frameDriverInput.blendStartTime = ctx->state->m_fBlendStartTime;
+        frameDriverInput.blendDuration = ctx->state->m_fBlendDuration;
+        frameDriverInput.hardCutsDisabled = kBeatdropHardCutsDisabled;
+        frameDriverInput.presetLockedByUser = false;
+        frameDriverInput.presetLockedByCode = false;
+        frameDriverInput.hardCutLoudnessThresh = kBeatdropHardCutLoudnessThresh;
+        frameDriverInput.hardCutHalflife = kBeatdropHardCutHalflife;
+        frameDriverInput.immRel[0] = ctx->mysound.imm_rel[0];
+        frameDriverInput.immRel[1] = ctx->mysound.imm_rel[1];
+        frameDriverInput.immRel[2] = ctx->mysound.imm_rel[2];
+        frameDriverInput.waveScale = ctx->state->m_fWaveScale.eval(time);
+        frameDriverInput.waveSmoothing = ctx->state->m_fWaveSmoothing.eval(time);
+        frameDriverInput.oldWarpPSVersion = ctx->oldState->m_nWarpPSVersion;
+        frameDriverInput.newWarpPSVersion = ctx->state->m_nWarpPSVersion;
+        frameDriverInput.oldCompPSVersion = ctx->oldState->m_nCompPSVersion;
+        frameDriverInput.newCompPSVersion = ctx->state->m_nCompPSVersion;
+
+        FrameUpdateOutput frameDriverOutput;
+        ctx->frameDriver.Update(frameDriverInput, ctx->mysound.fWave, frameDriverOutput);
+
+        if (frameDriverOutput.isFirstFrame)
+        {
+            ctx->startTime = time;
+            ctx->presetStartTime = time;
+        }
+
+        ctx->nextPresetTime = frameDriverOutput.nextPresetTime;
+        ctx->nextPresetTimeWasInitialized = frameDriverOutput.nextPresetTimeWasInitialized;
+
+        BdDrawRandFrame(ctx);
+
+        if (frameDriverOutput.blendProgressComputed)
+        {
+            ctx->state->m_fBlendProgress = frameDriverOutput.blendProgress;
+
+            if (frameDriverOutput.blendFinished)
+                ctx->state->m_bBlending = false;
+        }
+
+        RunPerFrameEquations(ctx->state, ctx->oldState, frameDriverOutput.shaderBlendCode,
+            BdMakeFrameInputs(ctx), ctx->snapPoint);
+    }
+
+    void BdRenderLegacyFrame(sv_context* ctx, uint32_t target_fbo)
+    {
+        BdStepSimulationClock(ctx);
+        BdAnalyzeAudio(ctx, ctx->timeModel.GetFps());
+        BdRunFrameEquations(ctx);
+
+        BdGlRenderFrame(ctx, target_fbo);
+
+        ctx->frame++;
+    }
+
+    double BdWallSeconds()
+    {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    double BdHostFrameSeconds(sv_context* ctx, double dt_seconds)
+    {
+        const double now = BdWallSeconds();
+        const double previous = ctx->lastWallSeconds;
+        ctx->lastWallSeconds = now;
+
+        if (ctx->resumePending)
+        {
+            ctx->resumePending = false;
+            return 1.0 / static_cast<double>(ctx->fpsHint);
+        }
+
+        if (std::isfinite(dt_seconds) && dt_seconds > 0.0)
+            return std::min(dt_seconds, kBeatdropMaxFrameDtSeconds);
+
+        if (previous <= 0.0)
+            return 1.0 / static_cast<double>(ctx->fpsHint);
+
+        return std::min(std::max(now - previous, 0.0), kBeatdropMaxFrameDtSeconds);
+    }
+
+    int BdTakeSimulationSteps(sv_context* ctx, double frameSeconds)
+    {
+        ctx->stepAccumulator += frameSeconds * static_cast<double>(ctx->playbackRate);
+
+        int steps = static_cast<int>(ctx->stepAccumulator / kBeatdropSimulationStepSeconds);
+
+        if (ctx->frame == 0 && steps < 1)
+            steps = 1;
+
+        if (steps > kBeatdropMaxSimulationStepsPerFrame)
+        {
+            steps = kBeatdropMaxSimulationStepsPerFrame;
+            ctx->stepAccumulator = 0.0;
+            return steps;
+        }
+
+        ctx->stepAccumulator = std::max(ctx->stepAccumulator - steps * kBeatdropSimulationStepSeconds, 0.0);
+        return steps;
+    }
+
+    void BdUpdateDisplayFps(sv_context* ctx, double frameSeconds)
+    {
+        const float measured = static_cast<float>(1.0 / std::max(frameSeconds, 1.0 / 1000.0));
+
+        if (ctx->frame == 0)
+            ctx->displayFps = measured;
+        else
+            ctx->displayFps = kBeatdropDisplayFpsDamping * ctx->displayFps + (1.0f - kBeatdropDisplayFpsDamping) * measured;
+    }
+
+    void BdRenderFixedStepFrame(sv_context* ctx, double dt_seconds, uint32_t target_fbo)
+    {
+        const double frameSeconds = BdHostFrameSeconds(ctx, dt_seconds);
+        BdUpdateDisplayFps(ctx, frameSeconds);
+
+        const int steps = BdTakeSimulationSteps(ctx, frameSeconds);
+
+        BdAnalyzeAudio(ctx, ctx->displayFps);
+        BdGlBeginFrame(ctx);
+
+        for (int i = 0; i < steps; i++)
+        {
+            BdStepSimulationClock(ctx);
+            BdRunFrameEquations(ctx);
+
+            BdGlStepFrame(ctx);
+
+            ctx->frame++;
+        }
+
+        BdGlPresentFrame(ctx, target_fbo);
+    }
+}
+
 extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo)
 {
     if (ctx == nullptr || ctx->paused)
@@ -312,88 +499,11 @@ extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t tar
     ctx->lastFrameDt = dt_seconds;
     ctx->lastTargetFbo = target_fbo;
 
-    ctx->rawClock.Advance();
-    ctx->timeModel.Step(ctx->frame, ctx->rawClock, kBeatdropTimeVariableResetDelay, false);
-
-    const float time = static_cast<float>(ctx->timeModel.GetTime());
-    const float fps = ctx->timeModel.GetFps();
-
-    if (ctx->timeModel.TimeWasReset())
+    if (ctx->deterministic)
     {
-        ctx->presetStartTime = time;
-        ctx->nextPresetTime = -1.0f;
-        ctx->nextPresetTimeWasInitialized = false;
+        BdRenderLegacyFrame(ctx, target_fbo);
+        return;
     }
 
-    GetAudioBuf(ctx->pcmLeft, ctx->pcmRight, kBeatdropPcmWindow);
-    AnalyzeNewSoundAudio(ctx->pcmLeft, ctx->pcmRight, fps, ctx->sound, ctx->fft);
-    BdAlignWaves(ctx);
-
-    ComputeCustomSoundAnalysis(ctx->analysisSettings, fps, ctx->frame,
-        ctx->state->m_fFFTAttack.eval(time), ctx->state->m_fFFTDecay.eval(time),
-        ctx->freezeBeatDetection, ctx->frozenBeatDetection, ctx->sound, ctx->mysound,
-        ctx->fft, ctx->fftShader, ctx->fftSmoothed, ctx->fftPeak, ctx->nFftPeakHold);
-
-    BdSampleContextSources(ctx);
-
-    float nextPresetTimeRandomDraw = 0.0f;
-    if (ctx->nextPresetTime < 0.0f)
-        nextPresetTimeRandomDraw = BdDrawRandom(ctx);
-
-    FrameUpdateInput frameDriverInput = {};
-    frameDriverInput.frame = ctx->frame;
-    frameDriverInput.redraw = false;
-    frameDriverInput.time = static_cast<double>(time);
-    frameDriverInput.fps = fps;
-    frameDriverInput.nextPresetTime = ctx->nextPresetTime;
-    frameDriverInput.nextPresetTimeRandomDraw = nextPresetTimeRandomDraw;
-    frameDriverInput.timeBetweenPresetsRand = kBeatdropTimeBetweenPresetsRand;
-    frameDriverInput.blendTimeAuto = kBeatdropBlendTimeAuto;
-    frameDriverInput.timeBetweenPresets = kBeatdropTimeBetweenPresets;
-    frameDriverInput.isBlending = ctx->state->m_bBlending;
-    frameDriverInput.blendStartTime = ctx->state->m_fBlendStartTime;
-    frameDriverInput.blendDuration = ctx->state->m_fBlendDuration;
-    frameDriverInput.hardCutsDisabled = kBeatdropHardCutsDisabled;
-    frameDriverInput.presetLockedByUser = false;
-    frameDriverInput.presetLockedByCode = false;
-    frameDriverInput.hardCutLoudnessThresh = kBeatdropHardCutLoudnessThresh;
-    frameDriverInput.hardCutHalflife = kBeatdropHardCutHalflife;
-    frameDriverInput.immRel[0] = ctx->mysound.imm_rel[0];
-    frameDriverInput.immRel[1] = ctx->mysound.imm_rel[1];
-    frameDriverInput.immRel[2] = ctx->mysound.imm_rel[2];
-    frameDriverInput.waveScale = ctx->state->m_fWaveScale.eval(time);
-    frameDriverInput.waveSmoothing = ctx->state->m_fWaveSmoothing.eval(time);
-    frameDriverInput.oldWarpPSVersion = ctx->oldState->m_nWarpPSVersion;
-    frameDriverInput.newWarpPSVersion = ctx->state->m_nWarpPSVersion;
-    frameDriverInput.oldCompPSVersion = ctx->oldState->m_nCompPSVersion;
-    frameDriverInput.newCompPSVersion = ctx->state->m_nCompPSVersion;
-
-    FrameUpdateOutput frameDriverOutput;
-    ctx->frameDriver.Update(frameDriverInput, ctx->mysound.fWave, frameDriverOutput);
-
-    if (frameDriverOutput.isFirstFrame)
-    {
-        ctx->startTime = time;
-        ctx->presetStartTime = time;
-    }
-
-    ctx->nextPresetTime = frameDriverOutput.nextPresetTime;
-    ctx->nextPresetTimeWasInitialized = frameDriverOutput.nextPresetTimeWasInitialized;
-
-    BdDrawRandFrame(ctx);
-
-    if (frameDriverOutput.blendProgressComputed)
-    {
-        ctx->state->m_fBlendProgress = frameDriverOutput.blendProgress;
-
-        if (frameDriverOutput.blendFinished)
-            ctx->state->m_bBlending = false;
-    }
-
-    RunPerFrameEquations(ctx->state, ctx->oldState, frameDriverOutput.shaderBlendCode,
-        BdMakeFrameInputs(ctx), ctx->snapPoint);
-
-    BdGlRenderFrame(ctx, target_fbo);
-
-    ctx->frame++;
+    BdRenderFixedStepFrame(ctx, dt_seconds, target_fbo);
 }

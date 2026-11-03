@@ -84,6 +84,13 @@ class MainActivity : ComponentActivity() {
             widthPixels = metrics.widthPixels,
             heightPixels = metrics.heightPixels,
             preserveEglContext = intent.getBooleanExtra(EXTRA_PRESERVE_EGL_CONTEXT, true),
+            maxFps = intent.getFloatExtra(EXTRA_MAX_FPS, 0f),
+            maxLuminance = intent.getFloatExtra(EXTRA_MAX_LUMINANCE, 0f),
+            flashLimit = intent.getFloatExtra(EXTRA_FLASH_LIMIT, 0f),
+            playbackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, 1f),
+            validatePath = intent.getStringExtra(EXTRA_VALIDATE)?.let(::File),
+            validateText = intent.getStringExtra(EXTRA_VALIDATE_TEXT),
+            temporaryDirectory = cacheDir,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) observeProjection()
         setContent {
@@ -151,5 +158,11 @@ class MainActivity : ComponentActivity() {
         const val TAG = "SynesthesiaVibeSample"
         const val EXTRA_PRESET = "preset"
         const val EXTRA_PRESERVE_EGL_CONTEXT = "preserve-egl-context"
+        const val EXTRA_MAX_FPS = "maxFps"
+        const val EXTRA_MAX_LUMINANCE = "maxLuminance"
+        const val EXTRA_FLASH_LIMIT = "flashLimit"
+        const val EXTRA_PLAYBACK_RATE = "playbackRate"
+        const val EXTRA_VALIDATE = "validate"
+        const val EXTRA_VALIDATE_TEXT = "validateText"
     }
 }

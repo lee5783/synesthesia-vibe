@@ -10,10 +10,49 @@
 #import "SampleBundle.h"
 
 static const NSTimeInterval VisualizerMaximumFeedSeconds = 0.25;
+static const NSTimeInterval VisualizerFrameRateLogInterval = 1.0;
+static const NSTimeInterval VisualizerLaunchSnapshotDelay = 3.0;
 
 static void VisualizerLog(NSString *message)
 {
     fprintf(stderr, "AppKitSample: %s\n", message.UTF8String);
+}
+
+static NSString *_Nullable VisualizerLaunchValue(NSArray<NSString *> *arguments, NSString *name)
+{
+    NSUInteger index = [arguments indexOfObject:name];
+    if (index == NSNotFound || index + 1 >= arguments.count)
+        return nil;
+    return arguments[index + 1];
+}
+
+static float VisualizerLaunchMaxFps(NSArray<NSString *> *arguments)
+{
+    return VisualizerLaunchValue(arguments, @"--max-fps").floatValue;
+}
+
+static float VisualizerLaunchFloat(NSArray<NSString *> *arguments, NSString *name, float fallback)
+{
+    NSString *value = VisualizerLaunchValue(arguments, name);
+    return value != nil ? value.floatValue : fallback;
+}
+
+static void VisualizerLogValidation(NSString *_Nullable path)
+{
+    if (path == nil)
+        return;
+
+    NSError *error = nil;
+    if ([SVContext validatePresetAtURL:[NSURL fileURLWithPath:path] error:&error])
+        VisualizerLog([NSString stringWithFormat:@"validate \"%@\" ok", path]);
+    else
+        VisualizerLog([NSString stringWithFormat:@"validate \"%@\" failed code=%ld message=%@", path, (long)error.code, error.localizedDescription]);
+}
+
+static CGFloat VisualizerLaunchRenderScale(NSArray<NSString *> *arguments)
+{
+    NSString *value = VisualizerLaunchValue(arguments, @"--render-scale");
+    return value != nil ? (CGFloat)value.doubleValue : 1.0;
 }
 
 static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
@@ -40,6 +79,10 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 @property (nonatomic, assign) double wavFrameRemainder;
 @property (nonatomic, strong, nullable) SVAudioInput *microphoneInput;
 @property (nonatomic, strong, nullable) SVSystemAudioInput *systemAudioInput;
+@property (nonatomic, assign) BOOL logsFrameRate;
+@property (nonatomic, assign) NSUInteger renderedFrameCount;
+@property (nonatomic, assign) NSTimeInterval frameRateWindowStart;
+@property (nonatomic, copy, nullable) NSString *launchSnapshotPath;
 
 @end
 
@@ -53,9 +96,18 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     configuration.meshX = 64;
     configuration.meshY = 48;
     configuration.fpsHint = 60.0f;
+    NSArray<NSString *> *arguments = NSProcessInfo.processInfo.arguments;
+    configuration.maxFps = VisualizerLaunchMaxFps(arguments);
+    configuration.maxLuminance = VisualizerLaunchFloat(arguments, @"--max-luminance", 0.0f);
+    configuration.flashLimit = VisualizerLaunchFloat(arguments, @"--flash-limit", 0.0f);
+    VisualizerLogValidation(VisualizerLaunchValue(arguments, @"--validate"));
+    self.logsFrameRate = [arguments containsObject:@"--log-frame-rate"];
+    self.launchSnapshotPath = VisualizerLaunchValue(arguments, @"--snapshot");
 
     SVView *visualizerView = [[SVView alloc] initWithFrame:NSMakeRect(0, 0, 838, 441)];
     visualizerView.configuration = configuration;
+    visualizerView.renderScale = VisualizerLaunchRenderScale(arguments);
+    visualizerView.playbackRate = VisualizerLaunchFloat(arguments, @"--playback-rate", 1.0f);
     visualizerView.delegate = self;
     self.visualizerView = visualizerView;
     self.view = visualizerView;
@@ -70,6 +122,99 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 {
     VisualizerLog([NSString stringWithFormat:@"paused=%d", paused]);
     self.visualizerView.paused = paused;
+}
+
+- (float)preferredFramesPerSecond
+{
+    return self.visualizerView.preferredFramesPerSecond;
+}
+
+- (void)setPreferredFramesPerSecond:(float)preferredFramesPerSecond
+{
+    VisualizerLog([NSString stringWithFormat:@"preferred fps=%.0f", preferredFramesPerSecond]);
+    self.visualizerView.preferredFramesPerSecond = preferredFramesPerSecond;
+    self.renderedFrameCount = 0;
+    self.frameRateWindowStart = 0.0;
+}
+
+- (float)playbackRate
+{
+    return self.visualizerView.playbackRate;
+}
+
+- (void)setPlaybackRate:(float)playbackRate
+{
+    VisualizerLog([NSString stringWithFormat:@"playback rate=%.3f", playbackRate]);
+    self.visualizerView.playbackRate = playbackRate;
+}
+
+- (CGFloat)renderScale
+{
+    return self.visualizerView.renderScale;
+}
+
+- (void)setRenderScale:(CGFloat)renderScale
+{
+    VisualizerLog([NSString stringWithFormat:@"render scale=%.2f", renderScale]);
+    self.visualizerView.renderScale = renderScale;
+}
+
+- (void)saveSnapshotToURL:(NSURL *)url completion:(void (^)(NSError *_Nullable error))completion
+{
+    CGSize drawableSize = self.visualizerView.drawableSize;
+    [self.visualizerView snapshotWithCompletion:^(CGImageRef image) {
+        NSError *error = nil;
+        NSData *png = nil;
+        if (image != NULL)
+            png = [[[NSBitmapImageRep alloc] initWithCGImage:image] representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        if (png == nil || ![png writeToURL:url options:NSDataWritingAtomic error:&error]) {
+            if (error == nil)
+                error = [NSError errorWithDomain:SVErrorDomain code:SVErrorIO userInfo:@{ NSLocalizedDescriptionKey: @"snapshot unavailable" }];
+            VisualizerLog([NSString stringWithFormat:@"snapshot failed: %@", error.localizedDescription]);
+        } else {
+            VisualizerLog([NSString stringWithFormat:@"snapshot %zux%zu drawable=%.0fx%.0f \"%@\"", CGImageGetWidth(image), CGImageGetHeight(image),
+                           drawableSize.width, drawableSize.height, url.path]);
+        }
+        completion(error);
+    }];
+}
+
+- (void)scheduleLaunchSnapshot
+{
+    NSString *path = self.launchSnapshotPath;
+    if (path == nil)
+        return;
+
+    self.launchSnapshotPath = nil;
+    __weak VisualizerViewController *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(VisualizerLaunchSnapshotDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [weakSelf saveSnapshotToURL:[NSURL fileURLWithPath:path] completion:^(NSError *error) {
+            weakSelf.paused = YES;
+        }];
+    });
+}
+
+- (void)logFrameRateIfNeeded
+{
+    if (!self.logsFrameRate)
+        return;
+
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    if (self.frameRateWindowStart <= 0.0) {
+        self.frameRateWindowStart = now;
+        self.renderedFrameCount = 0;
+        return;
+    }
+
+    self.renderedFrameCount += 1;
+    NSTimeInterval elapsed = now - self.frameRateWindowStart;
+    if (elapsed < VisualizerFrameRateLogInterval)
+        return;
+
+    VisualizerLog([NSString stringWithFormat:@"rendered fps=%.1f preferred=%.0f drawable=%.0fx%.0f", self.renderedFrameCount / elapsed,
+                   self.visualizerView.preferredFramesPerSecond, self.visualizerView.drawableSize.width, self.visualizerView.drawableSize.height]);
+    self.frameRateWindowStart = now;
+    self.renderedFrameCount = 0;
 }
 
 - (SVAudioLevels)audioLevels
@@ -188,8 +333,10 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 
 - (void)view:(SVView *)view didCreateContext:(SVContext *)context
 {
-    VisualizerLog([NSString stringWithFormat:@"context created drawable=%.0fx%.0f", view.drawableSize.width, view.drawableSize.height]);
+    VisualizerLog([NSString stringWithFormat:@"context created drawable=%.0fx%.0f playbackRate=%.3f maxLuminance=%.2f flashLimit=%.2f", view.drawableSize.width, view.drawableSize.height,
+        context.playbackRate, context.configuration.maxLuminance, context.configuration.flashLimit]);
     [self applyPendingPresetWithContext:context];
+    [self scheduleLaunchSnapshot];
 
     NSError *error = nil;
     if (![self startAudioSourceWithContext:context error:&error]) {
@@ -207,6 +354,11 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     [self applyPendingPresetWithContext:context];
     if (self.audioSource == VisualizerAudioSourceWav)
         [self feedWavForDeltaTime:deltaTime context:context];
+}
+
+- (void)view:(SVView *)view didRenderFrameWithDeltaTime:(NSTimeInterval)deltaTime
+{
+    [self logFrameRateIfNeeded];
 }
 
 - (void)view:(SVView *)view didFailWithError:(NSError *)error

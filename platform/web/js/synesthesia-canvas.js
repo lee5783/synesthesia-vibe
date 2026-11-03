@@ -14,6 +14,9 @@ const MAX_DEVICE_PIXEL_RATIO = 2;
 const DEFAULT_FRAME_SECONDS = 1 / 60;
 const MAX_FRAME_SECONDS = 0.25;
 const MS_PER_SECOND = 1000;
+const MIN_MAX_FPS = 1;
+const DEADLINE_TOLERANCE = 0.2;
+const DEFAULT_PLAYBACK_RATE = 1;
 
 export class SynesthesiaCanvas {
 
@@ -29,7 +32,10 @@ export class SynesthesiaCanvas {
     #preset = null;
     #frameRequest = 0;
     #lastFrameMs = 0;
+    #frameIntervalMs = 0;
+    #nextDeadlineMs = 0;
     #paused = false;
+    #playbackRate = DEFAULT_PLAYBACK_RATE;
     #hidden = false;
     #lost = false;
     #closed = false;
@@ -43,6 +49,7 @@ export class SynesthesiaCanvas {
         this.#onError = options.onError ?? null;
         this.#onContextCreated = options.onContextCreated ?? null;
         this.#onBeforeRender = options.onBeforeRender ?? null;
+        this.#frameIntervalMs = SynesthesiaCanvas.#frameIntervalFor(this.#configuration.maxFps);
         this.#hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     }
 
@@ -77,6 +84,17 @@ export class SynesthesiaCanvas {
 
     get isPaused() {
         return this.#paused;
+    }
+
+    get playbackRate() {
+        return this.#playbackRate;
+    }
+
+    setPlaybackRate(rate) {
+        this.#playbackRate = rate;
+
+        if (this.#context !== null)
+            this.#context.setPlaybackRate(rate);
     }
 
     get isContextLost() {
@@ -140,6 +158,7 @@ export class SynesthesiaCanvas {
         if (this.#paused || this.#hidden)
             context.pause();
 
+        context.setPlaybackRate(this.#playbackRate);
         this.#context = context;
         this.#lastFrameMs = 0;
 
@@ -254,6 +273,7 @@ export class SynesthesiaCanvas {
             return;
 
         this.#lastFrameMs = 0;
+        this.#nextDeadlineMs = 0;
         this.#frameRequest = requestAnimationFrame(now => this.#frame(now));
     }
 
@@ -271,10 +291,16 @@ export class SynesthesiaCanvas {
         if (context === null)
             return;
 
+        if (!this.#isFrameDue(now)) {
+            this.#frameRequest = requestAnimationFrame(next => this.#frame(next));
+            return;
+        }
+
         const deltaSeconds = this.#lastFrameMs !== 0
-            ? Math.min((now - this.#lastFrameMs) / MS_PER_SECOND, MAX_FRAME_SECONDS)
+            ? Math.min((now - this.#lastFrameMs) / MS_PER_SECOND, this.#maxFrameSeconds())
             : this.#firstFrameSeconds();
         this.#lastFrameMs = now;
+        this.#advanceDeadline(now);
 
         try {
             makeWebGlContextCurrent(this.#module, this.#glHandle);
@@ -288,6 +314,33 @@ export class SynesthesiaCanvas {
         }
 
         this.#frameRequest = requestAnimationFrame(next => this.#frame(next));
+    }
+
+    #isFrameDue(now) {
+        return this.#frameIntervalMs === 0 || now >= this.#nextDeadlineMs - this.#frameIntervalMs * DEADLINE_TOLERANCE;
+    }
+
+    #advanceDeadline(now) {
+        if (this.#frameIntervalMs === 0)
+            return;
+
+        this.#nextDeadlineMs += this.#frameIntervalMs;
+
+        if (this.#nextDeadlineMs < now)
+            this.#nextDeadlineMs = now + this.#frameIntervalMs;
+    }
+
+    #maxFrameSeconds() {
+        return this.#frameIntervalMs === 0
+            ? MAX_FRAME_SECONDS
+            : Math.max(MAX_FRAME_SECONDS, 2 * this.#frameIntervalMs / MS_PER_SECOND);
+    }
+
+    static #frameIntervalFor(maxFps) {
+        if (!Number.isFinite(maxFps) || maxFps <= 0)
+            return 0;
+
+        return MS_PER_SECOND / Math.max(maxFps, MIN_MAX_FPS);
     }
 
     #firstFrameSeconds() {

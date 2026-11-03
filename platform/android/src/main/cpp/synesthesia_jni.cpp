@@ -41,6 +41,7 @@ namespace
     constexpr float kClearBlue = 153.0f / 255.0f;
     constexpr float kClearAlpha = 1.0f;
     constexpr size_t kLogReadChunk = 512;
+    constexpr size_t kValidateErrorBytes = 1024;
 
     void ForwardStderrToLogcat(int readFd)
     {
@@ -258,7 +259,8 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeCreate(JNIEnv* env, jclass,
     jint width, jint height, jint meshX, jint meshY, jint texsizeX, jint texsizeY, jfloat fpsHint,
     jbyteArray resourcePath, jbyteArray textureSearchPath, jbyteArray cachePath, jint rngSeed, jboolean deterministic,
-    jboolean pinDate, jfloatArray pinnedDate, jboolean pinMouse, jfloat mouseX, jfloat mouseY)
+    jboolean pinDate, jfloatArray pinnedDate, jboolean pinMouse, jfloat mouseX, jfloat mouseY,
+    jfloat maxFps, jfloat maxLuminance, jfloat flashLimit)
 {
     std::string resource = ToString(env, resourcePath);
     std::string textureSearch = ToString(env, textureSearchPath);
@@ -293,6 +295,9 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeCreate(JNIEnv* env, jclass,
     config.pin_mouse = pinMouse == JNI_TRUE;
     config.mouse_x = mouseX;
     config.mouse_y = mouseY;
+    config.max_fps = maxFps;
+    config.max_luminance = maxLuminance;
+    config.flash_limit = flashLimit;
 
     return static_cast<jlong>(reinterpret_cast<intptr_t>(sv_create(&config)));
 }
@@ -321,6 +326,23 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeLoadPresetText(JNIEnv* env, jc
 
     std::string presetText = ToString(env, text);
     return sv_load_preset_memory(ToContext(handle), presetText.data(), presetText.size(), blendSeconds);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeValidatePreset(JNIEnv* env, jclass, jbyteArray path, jobjectArray errorOut)
+{
+    std::string presetPath = ToString(env, path);
+    char error[kValidateErrorBytes] = {};
+    sv_status status = sv_validate_preset(path != nullptr ? presetPath.c_str() : nullptr, error, sizeof(error));
+
+    if (status != SV_OK && errorOut != nullptr && env->GetArrayLength(errorOut) > 0)
+    {
+        jbyteArray message = ToBytes(env, std::string(error));
+        env->SetObjectArrayElement(errorOut, 0, message);
+        env->DeleteLocalRef(message);
+    }
+
+    return status;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -385,6 +407,12 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeResume(JNIEnv*, jclass, jlong handle)
 {
     sv_resume(ToContext(handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetPlaybackRate(JNIEnv*, jclass, jlong handle, jfloat rate)
+{
+    sv_set_playback_rate(ToContext(handle), rate);
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

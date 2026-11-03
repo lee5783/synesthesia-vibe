@@ -27,6 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)view:(SVView *)view didFailWithError:(NSError *)error;
 - (void)view:(SVView *)view didCreateContext:(SVContext *)context;
 - (void)view:(SVView *)view willRenderFrameWithDeltaTime:(NSTimeInterval)deltaTime;
+- (void)view:(SVView *)view didRenderFrameWithDeltaTime:(NSTimeInterval)deltaTime;
 
 @end
 
@@ -41,6 +42,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, getter=isPaused) BOOL paused;
 @property (nonatomic, weak, nullable) id<SVViewDelegate> delegate;
 @property (nonatomic, assign, readonly) CGSize drawableSize;
+@property (nonatomic, assign) float preferredFramesPerSecond;
+@property (nonatomic, assign) CGFloat renderScale;
+@property (nonatomic, assign) float playbackRate;
+
+- (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block;
+- (void)snapshotWithCompletion:(void (^)(CGImageRef _Nullable image))completion;
 
 @end
 

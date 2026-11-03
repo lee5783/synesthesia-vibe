@@ -13,12 +13,16 @@ import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class SynesthesiaContext implements AutoCloseable {
 
     private static final String RENDERER_UNAVAILABLE_PREFIX = "renderer unavailable";
+    private static final String VALIDATE_TEMP_PREFIX = "sv-validate-";
+    private static final String VALIDATE_TEMP_SUFFIX = ".milk";
 
     static {
         System.loadLibrary("synesthesiavibe-jni");
@@ -45,6 +49,47 @@ public final class SynesthesiaContext implements AutoCloseable {
         return decode(nativeGlStrings());
     }
 
+    public static void validatePreset(File preset) throws SynesthesiaException {
+        if (preset == null)
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_validate_preset: path is empty");
+
+        byte[][] error = new byte[1][];
+        int status = nativeValidatePreset(encodePath(preset), error);
+
+        if (status != SynesthesiaException.SV_OK)
+            throw new SynesthesiaException(status, decode(error[0]));
+    }
+
+    public static void validatePresetText(String text) throws SynesthesiaException {
+        validatePresetText(text, null);
+    }
+
+    public static void validatePresetText(String text, File temporaryDirectory) throws SynesthesiaException {
+        if (text == null)
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_validate_preset_memory: text is null");
+
+        File temporary;
+        try {
+            temporary = File.createTempFile(VALIDATE_TEMP_PREFIX, VALIDATE_TEMP_SUFFIX, temporaryDirectory);
+        } catch (IOException | SecurityException error) {
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_IO,
+                    "could not create a temporary preset file in " + describeDirectory(temporaryDirectory) + ": " + error.getMessage());
+        }
+
+        try {
+            try (FileOutputStream output = new FileOutputStream(temporary)) {
+                output.write(text.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException error) {
+                throw new SynesthesiaException(SynesthesiaException.SV_ERR_IO,
+                        "could not write the temporary preset file " + temporary.getPath() + ": " + error.getMessage());
+            }
+
+            validatePreset(temporary);
+        } finally {
+            temporary.delete();
+        }
+    }
+
     public static SynesthesiaContext create(SynesthesiaConfiguration configuration) throws SynesthesiaException {
         float[] date = configuration.getPinnedDate();
         long handle = nativeCreate(
@@ -58,7 +103,8 @@ public final class SynesthesiaContext implements AutoCloseable {
                 configuration.getRngSeed(),
                 configuration.isDeterministic(),
                 configuration.isDatePinned(), date,
-                configuration.isMousePinned(), configuration.getMouseX(), configuration.getMouseY());
+                configuration.isMousePinned(), configuration.getMouseX(), configuration.getMouseY(),
+                configuration.getMaxFps(), configuration.getMaxLuminance(), configuration.getFlashLimit());
 
         if (handle == 0)
             throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_create returned no context");
@@ -156,6 +202,15 @@ public final class SynesthesiaContext implements AutoCloseable {
         lock.readLock().lock();
         try {
             nativeResume(requireHandle());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setPlaybackRate(float rate) {
+        lock.readLock().lock();
+        try {
+            nativeSetPlaybackRate(requireHandle(), rate);
         } finally {
             lock.readLock().unlock();
         }
@@ -268,6 +323,10 @@ public final class SynesthesiaContext implements AutoCloseable {
             throw new IllegalArgumentException("frames * channels exceeds the buffer length");
     }
 
+    private static String describeDirectory(File directory) {
+        return directory != null ? directory.getPath() : System.getProperty("java.io.tmpdir", "the default temporary directory");
+    }
+
     private static byte[] encodePath(File file) {
         return file != null ? file.getPath().getBytes(StandardCharsets.UTF_8) : null;
     }
@@ -295,7 +354,10 @@ public final class SynesthesiaContext implements AutoCloseable {
 
     private static native long nativeCreate(int width, int height, int meshX, int meshY, int texsizeX, int texsizeY, float fpsHint,
                                             byte[] resourcePath, byte[] textureSearchPath, byte[] cachePath, int rngSeed, boolean deterministic,
-                                            boolean pinDate, float[] pinnedDate, boolean pinMouse, float mouseX, float mouseY);
+                                            boolean pinDate, float[] pinnedDate, boolean pinMouse, float mouseX, float mouseY,
+                                            float maxFps, float maxLuminance, float flashLimit);
+
+    private static native int nativeValidatePreset(byte[] path, byte[][] errorOut);
 
     private static native void nativeDestroy(long handle);
 
@@ -316,6 +378,8 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native void nativePause(long handle);
 
     private static native void nativeResume(long handle);
+
+    private static native void nativeSetPlaybackRate(long handle, float rate);
 
     private static native byte[] nativeLastError(long handle);
 
