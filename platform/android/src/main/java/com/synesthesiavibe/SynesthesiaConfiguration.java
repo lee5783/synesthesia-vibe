@@ -32,6 +32,9 @@ public final class SynesthesiaConfiguration {
     private final int texsizeX;
     private final int texsizeY;
     private final float fpsHint;
+    private final float maxFps;
+    private final float maxLuminance;
+    private final float flashLimit;
     private final File resourcePath;
     private final File textureSearchPath;
     private final File cachePath;
@@ -51,6 +54,9 @@ public final class SynesthesiaConfiguration {
         texsizeX = builder.texsizeX;
         texsizeY = builder.texsizeY;
         fpsHint = builder.fpsHint;
+        maxFps = builder.maxFps;
+        maxLuminance = builder.maxLuminance;
+        flashLimit = builder.flashLimit;
         resourcePath = builder.resourcePath;
         textureSearchPath = builder.textureSearchPath;
         cachePath = builder.cachePath;
@@ -84,6 +90,9 @@ public final class SynesthesiaConfiguration {
                 .setMeshSize(meshX, meshY)
                 .setTextureSize(texsizeX, texsizeY)
                 .setFpsHint(fpsHint)
+                .setMaxFps(maxFps)
+                .setMaxLuminance(maxLuminance)
+                .setFlashLimit(flashLimit)
                 .setResourcePath(resourcePath)
                 .setTextureSearchPath(textureSearchPath)
                 .setCachePath(cachePath)
@@ -125,6 +134,18 @@ public final class SynesthesiaConfiguration {
 
     public float getFpsHint() {
         return fpsHint;
+    }
+
+    public float getMaxFps() {
+        return maxFps;
+    }
+
+    public float getMaxLuminance() {
+        return maxLuminance;
+    }
+
+    public float getFlashLimit() {
+        return flashLimit;
     }
 
     public File getResourcePath() {
@@ -176,6 +197,9 @@ public final class SynesthesiaConfiguration {
         private int texsizeX;
         private int texsizeY;
         private float fpsHint;
+        private float maxFps;
+        private float maxLuminance;
+        private float flashLimit;
         private File resourcePath;
         private File textureSearchPath;
         private File cachePath;
@@ -210,6 +234,21 @@ public final class SynesthesiaConfiguration {
 
         public Builder setFpsHint(float fps) {
             fpsHint = fps;
+            return this;
+        }
+
+        public Builder setMaxFps(float fps) {
+            maxFps = fps;
+            return this;
+        }
+
+        public Builder setMaxLuminance(float luminance) {
+            maxLuminance = luminance;
+            return this;
+        }
+
+        public Builder setFlashLimit(float luminancePerSecond) {
+            flashLimit = luminancePerSecond;
             return this;
         }
 

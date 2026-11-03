@@ -108,6 +108,9 @@ namespace
 
         gl->warpVerts.assign(ctx->meshVerts.size(), render_core::Vertex());
 
+        if (gl->limiterEnabled && !gl->limiter.Create(ctx->width, ctx->height))
+            return false;
+
         return BdGlUploadWarpIndices(ctx) && BdGlBuildCompositeGrid(ctx);
     }
 
@@ -176,6 +179,7 @@ void BdGlPipelineCreate(sv_context* ctx)
 
     ctx->gl = new BdGlPipeline();
     ctx->gl->highestBlurTexUsed = 0;
+    ctx->gl->presentBlurTexUsed = 0;
     ctx->gl->forcedBlurLevels = 0;
     ctx->gl->blurDumpFrame = 0;
     ctx->gl->warpIndexCount = 0;
@@ -184,6 +188,7 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->gl->compShaderActive = false;
     ctx->gl->resourcesBuilt = false;
     ctx->gl->ready = false;
+    ctx->gl->limiterEnabled = ctx->config.max_luminance > 0.0f || ctx->config.flash_limit > 0.0f;
 
     BdGlReadDevOverrides(ctx->gl);
 
@@ -199,6 +204,10 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->framesSinceResize = 0;
 
     fprintf(stderr, "synesthesia-vibe: GL pipeline ready texsize=%dx%d grid=%dx%d\n", ctx->texsizeX, ctx->texsizeY, ctx->nGridX, ctx->nGridY);
+
+    if (ctx->gl->limiterEnabled)
+        fprintf(stderr, "synesthesia-vibe: luminance limiter on max_luminance=%.3f flash_limit=%.3f\n", ctx->config.max_luminance,
+            ctx->config.flash_limit);
 }
 
 void BdGlPipelineResize(sv_context* ctx)
@@ -225,6 +234,13 @@ void BdGlPipelineResize(sv_context* ctx)
     }
 
     gl->warpVerts.assign(ctx->meshVerts.size(), render_core::Vertex());
+
+    if (gl->limiterEnabled && !gl->limiter.Resize(ctx->width, ctx->height))
+    {
+        ctx->lastError = "GL limiter resize failed";
+        gl->ready = false;
+        return;
+    }
 
     if (!BdGlUploadWarpIndices(ctx) || !BdGlBuildCompositeGrid(ctx))
     {

@@ -20,7 +20,8 @@ typedef NS_ERROR_ENUM(SVErrorDomain, SVErrorCode) {
     SVErrorShader = 3,
     SVErrorGL = 4,
     SVErrorArgument = 5,
-    SVErrorRendererUnavailable = 100
+    SVErrorRendererUnavailable = 100,
+    SVErrorPermissionDenied = 101
 };
 
 typedef struct SVAudioLevels {
@@ -36,12 +37,17 @@ typedef struct SVAudioLevels {
 @property (nonatomic, assign, readonly, getter=isPaused) BOOL paused;
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
 @property (nonatomic, copy, readonly, nullable) NSString *lastErrorMessage;
+@property (nonatomic, assign) float playbackRate;
 
 - (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;
 
 - (nullable instancetype)initWithConfiguration:(SVContextConfiguration *)configuration
                                          error:(NSError **)error NS_DESIGNATED_INITIALIZER;
+
++ (BOOL)validatePresetAtURL:(NSURL *)url error:(NSError **)error NS_SWIFT_NAME(validatePreset(at:));
+
++ (BOOL)validatePresetText:(NSString *)text error:(NSError **)error NS_SWIFT_NAME(validatePreset(text:));
 
 - (BOOL)loadPresetAtURL:(NSURL *)url
            blendSeconds:(float)blendSeconds

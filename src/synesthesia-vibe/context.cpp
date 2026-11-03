@@ -8,6 +8,7 @@
 #include "context.h"
 #include "gl_pipeline.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -282,6 +283,14 @@ extern "C" sv_context* sv_create(const sv_config* config)
         ctx->config.texsize_y = ctx->config.height;
     if (ctx->config.fps_hint <= 0.0f)
         ctx->config.fps_hint = kBeatdropDefaultFps;
+    if (!std::isfinite(ctx->config.max_fps) || ctx->config.max_fps < 0.0f)
+        ctx->config.max_fps = 0.0f;
+    if (!std::isfinite(ctx->config.max_luminance) || ctx->config.max_luminance <= 0.0f)
+        ctx->config.max_luminance = 0.0f;
+    else if (ctx->config.max_luminance > 1.0f)
+        ctx->config.max_luminance = 1.0f;
+    if (!std::isfinite(ctx->config.flash_limit) || ctx->config.flash_limit <= 0.0f)
+        ctx->config.flash_limit = 0.0f;
 
     ctx->width = ctx->config.width;
     ctx->height = ctx->config.height;
@@ -314,6 +323,12 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->lastBlendSeconds = 0.0f;
     ctx->lastFrameDt = 0.0;
     ctx->lastTargetFbo = 0;
+    ctx->playbackRate = 1.0f;
+    ctx->stepAccumulator = 0.0;
+    ctx->lastWallSeconds = 0.0;
+    ctx->resumePending = false;
+    ctx->displayFps = ctx->fpsHint;
+    ctx->limiterLastTime = 0.0f;
 
     ctx->nGridX = ctx->meshX;
     ctx->nGridY = ctx->meshY;
@@ -350,7 +365,7 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->fftShader.Init(MY_FFT_SHADER_WINDOW, MY_FFT_SHADER_SAMPLES, 0);
 
     ctx->timeModel.SetHighPrecisionFrequency(static_cast<long long>(kBeatdropTicksPerSecond));
-    ctx->rawClock.SetDeterministic(ctx->deterministic);
+    ctx->rawClock.SetFixedStep(true);
     ctx->rawClock.SetTickDelta(166666);
     ctx->rawClock.Restart();
 
@@ -419,9 +434,20 @@ extern "C" void sv_resume(sv_context* ctx)
         return;
 
     ctx->paused = false;
+    ctx->stepAccumulator = 0.0;
+    ctx->lastWallSeconds = 0.0;
+    ctx->resumePending = true;
+}
 
-    if (!ctx->deterministic)
-        ctx->rawClock.Restart();
+extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
+{
+    if (ctx == nullptr)
+        return;
+
+    if (!std::isfinite(rate))
+        rate = 1.0f;
+
+    ctx->playbackRate = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
 }
 
 extern "C" const char* sv_last_error(sv_context* ctx)

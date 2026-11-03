@@ -50,6 +50,11 @@ typedef struct sv_config
 
     /* Writable directory for sv_load_preset_memory's temporary file; NULL falls back to $TEMP, then $TMPDIR, then ".". */
     const char* cache_path;
+
+    float max_fps;
+
+    float max_luminance;
+    float flash_limit;
 } sv_config;
 
 typedef void* (*sv_gl_get_proc_fn)(const char* name);
@@ -62,6 +67,10 @@ void        sv_destroy(sv_context* ctx);
 sv_status   sv_load_preset(sv_context* ctx, const char* path, float blend_seconds);
 sv_status   sv_load_preset_memory(sv_context* ctx, const char* text, size_t len, float blend_seconds);
 
+/* sv_validate_preset* need no context or GL; they are not safe to run concurrently with a preset load on another thread. */
+sv_status   sv_validate_preset(const char* path, char* error, size_t error_len);
+sv_status   sv_validate_preset_memory(const char* text, size_t len, char* error, size_t error_len);
+
 void        sv_push_pcm_float(sv_context* ctx, const float* interleaved, size_t frames, int channels);
 void        sv_push_pcm_s16(sv_context* ctx, const int16_t* interleaved, size_t frames, int channels);
 void        sv_get_audio_levels(sv_context* ctx, float* out_bass, float* out_mid, float* out_treb);
@@ -73,6 +82,8 @@ void        sv_resize(sv_context* ctx, int width, int height);
 /* sv_pause makes sv_render_frame a no-op until sv_resume; resume continues the preset time without a jump or reset. */
 void        sv_pause(sv_context* ctx);
 void        sv_resume(sv_context* ctx);
+
+void        sv_set_playback_rate(sv_context* ctx, float rate);
 
 const char* sv_last_error(sv_context* ctx);
 void        sv_dump_frame_state(sv_context* ctx, const char* json_path);

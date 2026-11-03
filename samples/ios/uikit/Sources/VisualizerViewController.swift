@@ -30,12 +30,18 @@ final class VisualizerViewController: UIViewController {
         self.library = library
         let configuration = SVContextConfiguration()
         configuration.resourceURL = library.resourceURL
+        configuration.maxFps = Self.launchMaxFps(arguments: ProcessInfo.processInfo.arguments)
         player = SynesthesiaPlayer(configuration: configuration)
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    private static func launchMaxFps(arguments: [String]) -> Float {
+        guard let index = arguments.firstIndex(of: "--max-fps"), index + 1 < arguments.endIndex else { return 0 }
+        return Float(arguments[index + 1]) ?? 0
     }
 
     override func viewDidLoad() {

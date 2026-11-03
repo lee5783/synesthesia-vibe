@@ -6,18 +6,50 @@
 //
 
 #import "SVView.h"
+#import "SVContext+Internal.h"
 
 #import <OpenGLES/EAGL.h>
 #import <OpenGLES/EAGLDrawable.h>
 #import <OpenGLES/ES3/gl.h>
 #import <QuartzCore/QuartzCore.h>
 
+#include <math.h>
 #include <stdio.h>
+#include <vector>
+
+#include "capture.h"
 
 namespace
 {
     constexpr NSTimeInterval kDefaultFrameInterval = 1.0 / 60.0;
     constexpr NSTimeInterval kMaxFrameInterval = 0.25;
+    constexpr double kFrameDeadlineTolerance = 0.2;
+    constexpr double kMinimumFrameRateCap = 1.0;
+    constexpr CGFloat kMinimumRenderScale = 0.25;
+    constexpr CGFloat kMaximumRenderScale = 1.0;
+
+    float SVNormalizedFramesPerSecond(float framesPerSecond)
+    {
+        return isfinite(framesPerSecond) && framesPerSecond > 0.0f ? fmaxf(framesPerSecond, static_cast<float>(kMinimumFrameRateCap)) : 0.0f;
+    }
+
+    CGFloat SVClampedRenderScale(CGFloat renderScale)
+    {
+        return isfinite(renderScale) ? fmin(fmax(renderScale, kMinimumRenderScale), kMaximumRenderScale) : kMaximumRenderScale;
+    }
+
+    CGImageRef SVCreateImageFromRgbTopDown(int width, int height, const std::vector<unsigned char>& pixels)
+    {
+        CFDataRef data = CFDataCreate(kCFAllocatorDefault, pixels.data(), static_cast<CFIndex>(pixels.size()));
+        CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
+        CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        CGImageRef image = CGImageCreate(width, height, 8, 24, static_cast<size_t>(width) * 3, colorSpace,
+                                         kCGBitmapByteOrderDefault | kCGImageAlphaNone, provider, nullptr, false, kCGRenderingIntentDefault);
+        CGColorSpaceRelease(colorSpace);
+        CGDataProviderRelease(provider);
+        CFRelease(data);
+        return image;
+    }
 }
 
 @interface SVView ()
@@ -35,6 +67,14 @@ namespace
     GLuint _colorRenderbuffer;
     CADisplayLink *_displayLink;
     CFTimeInterval _lastFrameTimestamp;
+    CFTimeInterval _nextFrameDeadline;
+    NSTimeInterval _cappedFrameInterval;
+    float _preferredFramesPerSecond;
+    BOOL _hasPreferredFramesPerSecond;
+    BOOL _frameRateHintApplied;
+    CGFloat _renderScale;
+    float _playbackRate;
+    NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
     BOOL _applicationActive;
     BOOL _contextPaused;
     BOOL _contextFailed;
@@ -137,6 +177,7 @@ namespace
         return;
 
     [EAGLContext setCurrentContext:_glContext];
+    [self failPendingSnapshots];
     [self.context invalidate];
     self.context = nil;
     [self destroyDrawable];
@@ -169,6 +210,8 @@ namespace
 - (void)commonInit
 {
     _configuration = [[SVContextConfiguration alloc] init];
+    _renderScale = kMaximumRenderScale;
+    _playbackRate = SVNormalizedPlaybackRate(1.0f);
     _applicationActive = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
     self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
     [self configureDrawableLayer];
@@ -195,6 +238,60 @@ namespace
     _configuration = configuration != nil ? [configuration copy] : [[SVContextConfiguration alloc] init];
 }
 
+- (float)preferredFramesPerSecond
+{
+    return _hasPreferredFramesPerSecond ? _preferredFramesPerSecond : SVNormalizedFramesPerSecond(_configuration.maxFps);
+}
+
+- (void)setPreferredFramesPerSecond:(float)preferredFramesPerSecond
+{
+    const float normalized = SVNormalizedFramesPerSecond(preferredFramesPerSecond);
+
+    if (_hasPreferredFramesPerSecond && normalized == _preferredFramesPerSecond)
+        return;
+
+    _preferredFramesPerSecond = normalized;
+    _hasPreferredFramesPerSecond = YES;
+    fprintf(stderr, "SVView: preferred frames per second %.2f\n", normalized);
+    [self applyPreferredFramesPerSecond];
+}
+
+- (float)playbackRate
+{
+    return _playbackRate;
+}
+
+- (void)setPlaybackRate:(float)playbackRate
+{
+    const float normalized = SVNormalizedPlaybackRate(playbackRate);
+
+    if (normalized == _playbackRate)
+        return;
+
+    _playbackRate = normalized;
+    self.context.playbackRate = normalized;
+    fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
+}
+
+- (CGFloat)renderScale
+{
+    return _renderScale;
+}
+
+- (void)setRenderScale:(CGFloat)renderScale
+{
+    const CGFloat clamped = SVClampedRenderScale(renderScale);
+
+    if (clamped == _renderScale)
+        return;
+
+    _renderScale = clamped;
+    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+    self.contentScaleFactor = screen.nativeScale * _renderScale;
+    fprintf(stderr, "SVView: render scale %.2f\n", clamped);
+    [self setNeedsLayout];
+}
+
 - (void)setPaused:(BOOL)paused
 {
     if (_paused == paused)
@@ -209,7 +306,7 @@ namespace
     [super didMoveToWindow];
 
     if (self.window != nil)
-        self.contentScaleFactor = self.window.screen.nativeScale;
+        self.contentScaleFactor = self.window.screen.nativeScale * _renderScale;
 
     [self updateRunningState];
 }
@@ -253,6 +350,7 @@ namespace
     {
         [self stopDisplayLink];
         [self pauseContext];
+        [self failPendingSnapshots];
     }
 }
 
@@ -297,12 +395,72 @@ namespace
     _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(displayLinkDidFire:)];
     [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     _lastFrameTimestamp = 0;
+    _nextFrameDeadline = 0;
+    [self applyFrameRateCapToDisplayLink];
 }
 
 - (void)stopDisplayLink
 {
     [_displayLink invalidate];
     _displayLink = nil;
+}
+
+- (void)applyPreferredFramesPerSecond
+{
+    _cappedFrameInterval = _preferredFramesPerSecond > 0 ? 1.0 / _preferredFramesPerSecond : 0;
+    _nextFrameDeadline = 0;
+    [self applyFrameRateCapToDisplayLink];
+}
+
+- (void)applyFrameRateCapToDisplayLink
+{
+    if (_displayLink == nil)
+        return;
+
+    if (_cappedFrameInterval <= 0)
+    {
+        if (_frameRateHintApplied)
+        {
+            if (@available(iOS 15.0, *))
+                _displayLink.preferredFrameRateRange = CAFrameRateRangeDefault;
+            else
+                _displayLink.preferredFramesPerSecond = 0;
+
+            _frameRateHintApplied = NO;
+            fprintf(stderr, "SVView: frame rate cap off display link preferred=default\n");
+        }
+        return;
+    }
+
+    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+    const NSInteger maximumFramesPerSecond = MAX(screen.maximumFramesPerSecond, static_cast<NSInteger>(1));
+    const NSInteger divisor = MAX(static_cast<NSInteger>(floor(maximumFramesPerSecond * _cappedFrameInterval)), static_cast<NSInteger>(1));
+    const double preferredFramesPerSecond = static_cast<double>(maximumFramesPerSecond) / divisor;
+
+    if (@available(iOS 15.0, *))
+        _displayLink.preferredFrameRateRange = CAFrameRateRangeMake(preferredFramesPerSecond, maximumFramesPerSecond, preferredFramesPerSecond);
+    else
+        _displayLink.preferredFramesPerSecond = static_cast<NSInteger>(ceil(preferredFramesPerSecond));
+
+    _frameRateHintApplied = YES;
+    fprintf(stderr, "SVView: frame rate cap %.2f fps display link preferred=%.2f max=%ld\n", 1.0 / _cappedFrameInterval,
+            preferredFramesPerSecond, static_cast<long>(maximumFramesPerSecond));
+}
+
+- (BOOL)shouldSkipFrameAtTimestamp:(CFTimeInterval)timestamp
+{
+    return _cappedFrameInterval > 0 && timestamp < _nextFrameDeadline - _cappedFrameInterval * kFrameDeadlineTolerance;
+}
+
+- (void)advanceFrameDeadlineFromTimestamp:(CFTimeInterval)timestamp
+{
+    if (_cappedFrameInterval <= 0)
+        return;
+
+    _nextFrameDeadline += _cappedFrameInterval;
+
+    if (_nextFrameDeadline < timestamp)
+        _nextFrameDeadline = timestamp + _cappedFrameInterval;
 }
 
 #pragma mark - Rendering
@@ -357,12 +515,22 @@ namespace
     {
         _contextFailed = YES;
         [self stopDisplayLink];
+        [self failPendingSnapshots];
         [self reportError:error];
         return;
     }
 
     self.context = context;
+    context.playbackRate = _playbackRate;
     _contextPaused = NO;
+
+    if (!_hasPreferredFramesPerSecond)
+    {
+        _preferredFramesPerSecond = SVNormalizedFramesPerSecond(configuration.maxFps);
+        _hasPreferredFramesPerSecond = YES;
+    }
+
+    [self applyPreferredFramesPerSecond];
     fprintf(stderr, "SVView: context created %ldx%ld backing pixels scale=%.2f\n", static_cast<long>(configuration.width), static_cast<long>(configuration.height), self.contentScaleFactor);
 
     if ([self.delegate respondsToSelector:@selector(view:didCreateContext:)])
@@ -376,13 +544,21 @@ namespace
     if (![self shouldRun] || self.context == nil || _framebuffer == 0)
         return;
 
+    const CFTimeInterval timestamp = displayLink.timestamp;
+
+    if ([self shouldSkipFrameAtTimestamp:timestamp])
+        return;
+
     if (![self makeGlContextCurrent])
         return;
 
-    NSTimeInterval deltaTime = _lastFrameTimestamp > 0 ? displayLink.timestamp - _lastFrameTimestamp : kDefaultFrameInterval;
-    _lastFrameTimestamp = displayLink.timestamp;
+    NSTimeInterval deltaTime = _lastFrameTimestamp > 0 ? timestamp - _lastFrameTimestamp : kDefaultFrameInterval;
+    _lastFrameTimestamp = timestamp;
+    [self advanceFrameDeadlineFromTimestamp:timestamp];
 
-    if (deltaTime <= 0 || deltaTime > kMaxFrameInterval)
+    const NSTimeInterval maxFrameInterval = _cappedFrameInterval > 0 ? fmax(kMaxFrameInterval, 2.0 * _cappedFrameInterval) : kMaxFrameInterval;
+
+    if (deltaTime <= 0 || deltaTime > maxFrameInterval)
         deltaTime = kDefaultFrameInterval;
 
     if ([self.delegate respondsToSelector:@selector(view:willRenderFrameWithDeltaTime:)])
@@ -392,7 +568,88 @@ namespace
         return;
 
     [self.context renderFrameWithDeltaTime:deltaTime targetFramebuffer:_framebuffer];
+    glBindFramebuffer(GL_FRAMEBUFFER, _framebuffer);
+    [self completePendingSnapshots];
+
+    if ([self.delegate respondsToSelector:@selector(view:didRenderFrameWithDeltaTime:)])
+        [self.delegate view:self didRenderFrameWithDeltaTime:deltaTime];
+
     [self presentDrawable];
+}
+
+- (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block
+{
+    if (block == nil)
+        return;
+
+    if (![NSThread isMainThread])
+    {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [self performWithContextCurrent:block];
+        });
+        return;
+    }
+
+    EAGLContext *previousContext = [EAGLContext currentContext];
+
+    if (![self makeGlContextCurrent])
+        return;
+
+    block();
+
+    if (previousContext != nil && previousContext != _glContext)
+        [EAGLContext setCurrentContext:previousContext];
+}
+
+- (void)snapshotWithCompletion:(void (^)(CGImageRef _Nullable image))completion
+{
+    if (completion == nil)
+        return;
+
+    if (![self shouldRun])
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nullptr);
+        });
+        return;
+    }
+
+    if (_snapshotCompletions == nil)
+        _snapshotCompletions = [NSMutableArray array];
+
+    [_snapshotCompletions addObject:[completion copy]];
+}
+
+- (void)completePendingSnapshots
+{
+    if (_snapshotCompletions.count == 0)
+        return;
+
+    NSArray<void (^)(CGImageRef _Nullable)> *completions = _snapshotCompletions;
+    _snapshotCompletions = nil;
+
+    const int width = static_cast<int>(self.drawableSize.width);
+    const int height = static_cast<int>(self.drawableSize.height);
+    std::vector<unsigned char> pixels;
+    CGImageRef image = render_gl::ReadbackRgbTopDown(width, height, pixels) ? SVCreateImageFromRgbTopDown(width, height, pixels) : nullptr;
+    fprintf(stderr, "SVView: snapshot %dx%d %s\n", width, height, image != nullptr ? "ok" : "failed");
+
+    for (void (^completion)(CGImageRef _Nullable) in completions)
+        completion(image);
+
+    CGImageRelease(image);
+}
+
+- (void)failPendingSnapshots
+{
+    if (_snapshotCompletions.count == 0)
+        return;
+
+    NSArray<void (^)(CGImageRef _Nullable)> *completions = _snapshotCompletions;
+    _snapshotCompletions = nil;
+
+    for (void (^completion)(CGImageRef _Nullable) in completions)
+        completion(nullptr);
 }
 
 #pragma mark - Errors

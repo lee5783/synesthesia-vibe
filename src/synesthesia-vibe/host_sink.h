@@ -41,7 +41,7 @@ class BdRawClock : public render_core::IRawClock
 public:
     BdRawClock();
 
-    void SetDeterministic(bool deterministic);
+    void SetFixedStep(bool fixedStep);
     void SetTickDelta(long long tickDelta);
     void Advance();
     void Restart();
@@ -50,7 +50,7 @@ public:
     unsigned QueryLowPrecisionMilliseconds() override;
 
 private:
-    bool m_deterministic;
+    bool m_fixedStep;
     long long m_ticks;
     long long m_tickDelta;
 };

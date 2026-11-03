@@ -43,6 +43,59 @@ each platform.
 
 Windows and Linux are not release targets.
 
+## Playback, validation and comfort settings
+
+These settings are the same on every platform. The C API names come first, and the wrapper names follow
+in the tables below.
+
+- **Frame-rate cap:** `sv_config.max_fps`. 0 means uncapped. The view loops pace rendering to it, and it
+  is fixed when the context is created. The cap does not change animation speed.
+- **Playback rate:** `sv_set_playback_rate(ctx, rate)` sets the simulation speed at runtime. The rate is
+  clamped to [0.125, 8] and defaults to 1. Interactive contexts advance in fixed 1/60 s steps, so motion
+  looks the same at 30, 60 or 120 fps. Below 1× frames hold. Deterministic (capture) contexts ignore it.
+- **Luminance and flash limit:** `sv_config.max_luminance` (0 = off, otherwise a soft ceiling in (0, 1])
+  and `sv_config.flash_limit` (0 = off, otherwise the largest rise in mean luminance per second). Both are
+  off by default, fixed at creation and only ever darken the image. The flash limit is measured in
+  simulation time, so a playback rate above 1 allows a proportionally larger rise per displayed second.
+- **Preset validation:** `sv_validate_preset(path, error, len)` and
+  `sv_validate_preset_memory(text, len, error, len)` check a preset without a context or GL. They return
+  `SV_OK`, `SV_ERR_IO`, `SV_ERR_PARSE` (not a preset, or a code error) or `SV_ERR_SHADER` (a shader that
+  does not translate). Do not run them while a preset loads on another thread.
+- **Stricter loading:** `sv_load_preset` and `sv_load_preset_memory` return `SV_ERR_PARSE` for an empty
+  file or text that has no `[preset00]` section and no preset key.
+
+| Setting | Apple (Objective-C / Swift) | Android (Java) | Web (JavaScript) |
+|---|---|---|---|
+| Frame-rate cap | `SVContextConfiguration.maxFps` | `Builder.setMaxFps` | `config.maxFps` |
+| Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
+| Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
+| Validation | `+[SVContext validatePresetAtURL:error:]`, `+validatePresetText:error:` (Swift `validatePreset(at:)`, `validatePreset(text:)`) | `SynesthesiaContext.validatePreset(File)`, `validatePresetText(String[, File])` | `SynesthesiaContext.validatePreset(module, path)`, `validatePresetText(module, text)` |
+
+- **Android:** `SynesthesiaRenderer.setPlaybackRate` can be called from any thread; the renderer applies
+  it on the GL thread before the next frame. `validatePresetText` writes the text to a temporary file in
+  the directory you pass (for example `Context.getCacheDir()`), or in `java.io.tmpdir`, and throws
+  `SV_ERR_IO` if it cannot.
+
+### Apple view and audio inputs
+
+- `SVView.preferredFramesPerSecond` changes the frame-rate cap at runtime. It starts at
+  `configuration.maxFps`.
+- `SVView.renderScale` renders at a fraction of the native resolution, from 0.25 to 1.
+- `-[SVView snapshotWithCompletion:]` returns the next rendered frame as a `CGImage`.
+- `-[SVView performWithContextCurrent:]` runs a block with the view's GL context current.
+- `-[SVViewDelegate view:didRenderFrameWithDeltaTime:]` is called after each frame and before it is
+  presented.
+- The macOS view follows its window to another display and picks up that display's refresh rate.
+- `SVAudioInput` and `SVSystemAudioInput` gain the following:
+  - `inputGain`;
+  - a `pcmHandler` block that receives the 44.1 kHz stereo PCM on the audio thread;
+  - `+authorizationStatus` and `+requestAccessWithCompletion:`;
+  - `SVErrorPermissionDenied` when microphone access is denied;
+  - `SVSystemAudioInput.excludesCurrentProcessAudio`, which is YES by default.
+- Inputs rebuild themselves when the audio device or its configuration changes.
+- **One input drives every view in the process.** An input keeps feeding the visualizer when the
+  context it was created with goes away, as long as another context is alive.
+
 ## Releases
 
 Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) and published on

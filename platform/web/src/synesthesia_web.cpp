@@ -33,9 +33,11 @@ namespace
     constexpr float kClearGreen = 102.0f / 255.0f;
     constexpr float kClearBlue = 153.0f / 255.0f;
     constexpr float kClearAlpha = 1.0f;
+    constexpr size_t kValidateErrorBytes = 1024;
 
     std::string g_glStrings;
     std::string g_captureError;
+    std::string g_validateError;
 
     void* GetGlProcAddress(const char* name)
     {
@@ -163,7 +165,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_gl_strings()
 extern "C" EMSCRIPTEN_KEEPALIVE sv_context* sv_web_create(
     int width, int height, int meshX, int meshY, int texsizeX, int texsizeY, float fpsHint,
     const char* resourcePath, const char* textureSearchPath, const char* cachePath, uint32_t rngSeed, int deterministic,
-    int pinDate, const float* pinnedDate, int pinMouse, float mouseX, float mouseY)
+    int pinDate, const float* pinnedDate, int pinMouse, float mouseX, float mouseY,
+    float maxFps, float maxLuminance, float flashLimit)
 {
     std::string resource = ToString(resourcePath);
     std::string textureSearch = ToString(textureSearchPath);
@@ -198,6 +201,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE sv_context* sv_web_create(
     config.pin_mouse = pinMouse != 0;
     config.mouse_x = mouseX;
     config.mouse_y = mouseY;
+    config.max_fps = maxFps;
+    config.max_luminance = maxLuminance;
+    config.flash_limit = flashLimit;
 
     return sv_create(&config);
 }
@@ -221,6 +227,27 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_load_preset_text(sv_context* ctx, con
         return SV_ERR_ARG;
 
     return sv_load_preset_memory(ctx, text, length, blendSeconds);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_validate_preset(const char* path)
+{
+    char error[kValidateErrorBytes] = {};
+    sv_status status = sv_validate_preset(path, error, sizeof(error));
+    g_validateError = error;
+    return status;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_validate_preset_text(const char* text, size_t length)
+{
+    char error[kValidateErrorBytes] = {};
+    sv_status status = sv_validate_preset_memory(text, length, error, sizeof(error));
+    g_validateError = error;
+    return status;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_validate_error()
+{
+    return g_validateError.c_str();
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_push_pcm_float(sv_context* ctx, const float* interleaved, int frames, int channels)
@@ -266,6 +293,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_pause(sv_context* ctx)
 extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_resume(sv_context* ctx)
 {
     sv_resume(ctx);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_playback_rate(sv_context* ctx, float rate)
+{
+    sv_set_playback_rate(ctx, rate);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_last_error(sv_context* ctx)

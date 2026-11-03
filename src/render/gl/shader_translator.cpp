@@ -10,14 +10,17 @@
 #include "preset_shader_header.h"
 #include "shader_prologue.h"
 #include "shader_text.h"
+#include "sampler_resolver.h"
 
 #include "GLSLGenerator.h"
 #include "HLSLParser.h"
 #include "HLSLTree.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace M4
@@ -163,10 +166,22 @@ bool IsAssignedInText(const std::string& text, const std::string& name)
             continue;
 
         size_t cursor = after;
+        size_t openParens = 0;
+
+        for (size_t before = after - name.size(); before > 0 && (text[before - 1] == '(' || text[before - 1] == ' '); before--)
+        {
+            if (text[before - 1] == '(')
+                openParens++;
+        }
 
         while (cursor < text.size())
         {
-            if (text[cursor] == '.')
+            if (text[cursor] == ')' && openParens > 0)
+            {
+                openParens--;
+                cursor++;
+            }
+            else if (text[cursor] == '.')
             {
                 cursor++;
 
@@ -204,10 +219,52 @@ bool IsAssignedInText(const std::string& text, const std::string& name)
     return false;
 }
 
+bool IsBoundConstant(const std::string& line, const std::string& name)
+{
+    const render_core::RandomTextureSlots slots = {};
+    const bool bVector = line.compare(0, 4, "vec4") == 0;
+    const bool bMatrix = line.compare(0, 3, "mat") == 0;
+
+    if (!bVector && !bMatrix)
+        return false;
+
+    return render_core::ResolveFloat4Constant(name.c_str(), bMatrix, bVector, slots).kind != render_core::Float4ConstantKind::None;
+}
+
+std::string ReplaceIdentifier(const std::string& text, const std::string& name, const std::string& replacement)
+{
+    std::string output;
+    size_t cursor = 0;
+    size_t position = 0;
+
+    while ((position = text.find(name, position)) != std::string::npos)
+    {
+        const size_t after = position + name.size();
+        const bool bBoundary = (position == 0 || !IsIdentifierChar(text[position - 1])) &&
+            (after >= text.size() || !IsIdentifierChar(text[after]));
+
+        if (bBoundary)
+        {
+            output.append(text, cursor, position - cursor);
+            output += replacement;
+            cursor = after;
+        }
+
+        position = after;
+    }
+
+    output.append(text, cursor, std::string::npos);
+    return output;
+}
+
 std::string PrefixGlobalUniforms(const std::string& glsl)
 {
+    static const char* const kWrittenSuffix = "_w";
+
     std::istringstream input(glsl);
-    std::string output;
+    std::vector<std::string> lines;
+    std::vector<std::string> writtenBound;
+    std::vector<size_t> declarationLines;
     std::string line;
     int depth = 0;
 
@@ -218,21 +275,31 @@ std::string PrefixGlobalUniforms(const std::string& glsl)
 
         if (bGlobalDeclaration && line.compare(0, 7, "sampler") != 0)
         {
-            for (const std::string& name : DeclaredNames(line))
+            const std::vector<std::string> names = DeclaredNames(line);
+
+            for (const std::string& name : names)
             {
                 if (IsAssignedInText(glsl, name))
                 {
-                    bGlobalDeclaration = false;
+                    if (names.size() == 1 && line.find('[') == std::string::npos && IsBoundConstant(line, name))
+                    {
+                        writtenBound.push_back(name);
+                        declarationLines.push_back(lines.size());
+                    }
+                    else
+                    {
+                        bGlobalDeclaration = false;
+                    }
+
                     break;
                 }
             }
         }
 
         if (bGlobalDeclaration)
-            output += "uniform ";
+            line = "uniform " + line;
 
-        output += line;
-        output += "\n";
+        lines.push_back(line);
 
         for (char c : line)
         {
@@ -240,6 +307,35 @@ std::string PrefixGlobalUniforms(const std::string& glsl)
                 ++depth;
             else if (c == '}')
                 --depth;
+        }
+    }
+
+    std::string output;
+
+    for (size_t index = 0; index < lines.size(); index++)
+    {
+        std::string text = lines[index];
+        const bool bDeclaration = std::find(declarationLines.begin(), declarationLines.end(), index) != declarationLines.end();
+
+        if (!bDeclaration)
+        {
+            for (const std::string& name : writtenBound)
+                text = ReplaceIdentifier(text, name, name + kWrittenSuffix);
+        }
+
+        output += text;
+        output += "\n";
+
+        if (bDeclaration)
+        {
+            const std::string name = DeclaredNames(text).front();
+            const size_t typeStart = text.compare(0, 8, "uniform ") == 0 ? 8 : 0;
+            output += text.substr(typeStart, text.rfind(name) - typeStart) + name + kWrittenSuffix + ";\n";
+        }
+        else if (!writtenBound.empty() && text.compare(0, 11, "void main()") == 0)
+        {
+            for (const std::string& name : writtenBound)
+                output += "    " + name + kWrittenSuffix + " = " + name + ";\n";
         }
     }
 
@@ -328,6 +424,57 @@ std::string FlipFrameBufferLookups(const std::string& glsl)
 
     if (insertAt != std::string::npos)
         output.insert(insertAt + 1, kFlipHelper);
+
+    return output;
+}
+
+std::string ResolveSamplerAliases(const std::string& text)
+{
+    static const std::string kDefine = "#define";
+    static const std::string kSamplerPrefix = "sampler_";
+
+    std::string output;
+    std::vector<std::pair<std::string, std::string>> aliases;
+    size_t index = 0;
+
+    while (index < text.size())
+    {
+        size_t lineEnd = text.find('\n', index);
+
+        if (lineEnd == std::string::npos)
+            lineEnd = text.size();
+
+        const std::string line = text.substr(index, lineEnd - index);
+        std::istringstream words(line);
+        std::string directive;
+        std::string name;
+        std::string value;
+        std::string extra;
+        words >> directive >> name >> value >> extra;
+
+        const bool bAlias = directive == kDefine && name.compare(0, kSamplerPrefix.size(), kSamplerPrefix) == 0 &&
+            value.compare(0, kSamplerPrefix.size(), kSamplerPrefix) == 0 && extra.empty() && name != value &&
+            std::all_of(name.begin(), name.end(), [](char c) { return IsIdentifierChar(c); }) &&
+            std::all_of(value.begin(), value.end(), [](char c) { return IsIdentifierChar(c); });
+
+        if (bAlias)
+        {
+            aliases.emplace_back(name, value);
+            output += "\n";
+        }
+        else
+        {
+            output += line;
+
+            if (lineEnd < text.size())
+                output += "\n";
+        }
+
+        index = lineEnd + 1;
+    }
+
+    for (const auto& alias : aliases)
+        output = ReplaceIdentifier(output, alias.first, alias.second);
 
     return output;
 }
@@ -447,7 +594,9 @@ TranslatedShader TranslatePresetShaderFor(GlslTarget target, PresetShaderStage s
 
     std::string preprocessed;
 
-    if (!parser.ApplyPreprocessor(shaderId.c_str(), assembled.data(), textLength, preprocessed))
+    const std::string aliasResolved = ResolveSamplerAliases(std::string(assembled.data(), textLength));
+
+    if (!parser.ApplyPreprocessor(shaderId.c_str(), aliasResolved.c_str(), aliasResolved.size(), preprocessed))
         return Failure(stage, LastParserError("preprocessing failed"));
 
     if (!parser.Parse(shaderId.c_str(), preprocessed.c_str(), preprocessed.size()))

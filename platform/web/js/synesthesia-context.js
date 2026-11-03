@@ -37,6 +37,33 @@ export class SynesthesiaContext {
         return module.UTF8ToString(module._sv_web_gl_strings());
     }
 
+    static validatePreset(module, path) {
+        const pointer = allocString(module, path, []);
+
+        try {
+            checkValidation(module, module._sv_web_validate_preset(pointer));
+        } finally {
+            if (pointer !== 0)
+                module._free(pointer);
+        }
+    }
+
+    static validatePresetText(module, text) {
+        if (text === null || text === undefined)
+            throw new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "sv_validate_preset_memory: text is null");
+
+        const bytes = new TextEncoder().encode(String(text));
+        const pointer = module._malloc(bytes.length + 1);
+
+        try {
+            module.HEAPU8.set(bytes, pointer);
+            module.HEAPU8[pointer + bytes.length] = 0;
+            checkValidation(module, module._sv_web_validate_preset_text(pointer, bytes.length));
+        } finally {
+            module._free(pointer);
+        }
+    }
+
     static async create(module, config = {}) {
         const strings = [];
         let date = 0;
@@ -65,7 +92,10 @@ export class SynesthesiaContext {
                 (config.rngSeed ?? 0) >>> 0,
                 config.deterministic ? 1 : 0,
                 pinnedDate !== null ? 1 : 0, date,
-                mouse !== null ? 1 : 0, mouse?.x ?? 0, mouse?.y ?? 0);
+                mouse !== null ? 1 : 0, mouse?.x ?? 0, mouse?.y ?? 0,
+                config.maxFps ?? 0,
+                config.maxLuminance ?? 0,
+                config.flashLimit ?? 0);
         } finally {
             strings.forEach(pointer => module._free(pointer));
 
@@ -154,6 +184,10 @@ export class SynesthesiaContext {
 
     resume() {
         this.#module._sv_web_resume(this.#requireHandle());
+    }
+
+    setPlaybackRate(rate) {
+        this.#module._sv_web_set_playback_rate(this.#requireHandle(), rate);
     }
 
     audioLevels() {
@@ -260,6 +294,11 @@ function allocString(module, text, pointers) {
     const pointer = module.stringToNewUTF8(String(text));
     pointers.push(pointer);
     return pointer;
+}
+
+function checkValidation(module, status) {
+    if (status !== SynesthesiaError.SV_OK)
+        throw new SynesthesiaError(status, module.UTF8ToString(module._sv_web_validate_error()));
 }
 
 function requireSamples(interleaved, frames, channels) {

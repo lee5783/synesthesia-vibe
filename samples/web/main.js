@@ -5,19 +5,21 @@
 //  Created by lee5783 on 2026-10-12.
 //
 
-import { AudioInput, ResourceLoader, SynesthesiaCanvas, SynesthesiaError, WavFeeder, loadSynesthesiaModule } from "synesthesia-vibe";
+import { AudioInput, ResourceLoader, SynesthesiaCanvas, SynesthesiaContext, SynesthesiaError, WavFeeder, loadSynesthesiaModule } from "synesthesia-vibe";
 import { runCapture } from "./capture.js";
 
 const MANIFEST_URL = "resources/manifest.json";
 const PRESET_BLEND_SECONDS = 2;
 const METER_FULL_SCALE = 3;
 const CUSTOM_PRESET_VALUE = "custom";
+const CONFIGURATION_PARAMETERS = Object.freeze(["maxFps", "maxLuminance", "flashLimit"]);
 const PRESET_SECTION = /^\s*\[preset\d+\]\s*$/im;
 const PRESET_KEY = /^\s*(MILKDROP_PRESET_VERSION|PSVERSION|fRating|fGammaAdj|fDecay|zoom|rot|warp|per_frame_\d+|per_pixel_\d+|wave_\d+_\w+|shapecode_\d+_\w+|warp_\d+|comp_\d+)\s*=/im;
 
 class SampleApp {
 
     #elements;
+    #configuration;
     #module = null;
     #view = null;
     #presets = [];
@@ -30,9 +32,14 @@ class SampleApp {
     #started = false;
     #loadFailed = false;
     #switching = Promise.resolve();
+    #playbackRate = 1;
+    #validatePath = null;
 
-    constructor(elements) {
+    constructor(elements, configuration, playbackRate = 1, validatePath = null) {
         this.#elements = elements;
+        this.#configuration = configuration;
+        this.#playbackRate = playbackRate;
+        this.#validatePath = validatePath;
     }
 
     async run() {
@@ -49,9 +56,13 @@ class SampleApp {
                 throw new SynesthesiaError(SynesthesiaError.SV_ERR_IO, MANIFEST_URL + " lists no presets");
 
             this.#view = await SynesthesiaCanvas.create(this.#elements.canvas, this.#module, {
+                configuration: this.#configuration,
                 onError: error => this.showError(error),
                 onBeforeRender: (context, deltaSeconds) => this.#wavFeeder?.feed(context, deltaSeconds)
             });
+            this.#view.setPlaybackRate(this.#playbackRate);
+            console.info("playback rate: " + this.#view.playbackRate);
+            this.#validateRequested();
             this.#populatePresets();
             this.#populateSources();
             this.#loadPreset(0, 0);
@@ -290,6 +301,23 @@ class SampleApp {
         select.value = CUSTOM_PRESET_VALUE;
     }
 
+    #validateRequested() {
+        if (this.#validatePath === null)
+            return;
+
+        const path = this.#validatePath === "" ? null : this.#validatePath;
+
+        try {
+            if (path === null)
+                SynesthesiaContext.validatePresetText(this.#module, "");
+            else
+                SynesthesiaContext.validatePreset(this.#module, path);
+            console.info("validate " + (path ?? "(empty text)") + ": SV_OK");
+        } catch (error) {
+            console.info("validate " + (path ?? "(empty text)") + ": " + (error instanceof SynesthesiaError ? error.message : String(error)));
+        }
+    }
+
     #reportLastError(label) {
         const text = this.#view.context?.lastError() ?? "";
 
@@ -393,6 +421,10 @@ function elementsById() {
     };
 }
 
+function numericParameters(parameters, names) {
+    return Object.fromEntries(names.filter(name => parameters.has(name)).map(name => [name, Number(parameters.get(name))]));
+}
+
 const elements = elementsById();
 const parameters = new URLSearchParams(location.search);
 
@@ -401,7 +433,7 @@ if (parameters.has("capture")) {
     elements.capturePanel.hidden = false;
     runCapture(parameters, elements);
 } else {
-    const app = new SampleApp(elements);
+    const app = new SampleApp(elements, numericParameters(parameters, CONFIGURATION_PARAMETERS), numericParameters(parameters, ["playbackRate"]).playbackRate ?? 1, parameters.get("validate"));
     window.addEventListener("error", event => app.showError(event.error ?? event.message));
     window.addEventListener("unhandledrejection", event => app.showError(event.reason));
     app.run();

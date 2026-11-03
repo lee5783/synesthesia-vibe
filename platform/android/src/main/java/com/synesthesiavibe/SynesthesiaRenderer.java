@@ -8,15 +8,22 @@
 package com.synesthesiavibe;
 
 import android.opengl.GLSurfaceView;
+import android.util.Log;
+
+import java.util.concurrent.locks.LockSupport;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
+    private static final String LOG_TAG = "SynesthesiaVibe";
     private static final int EGL_CONTEXT_CLIENT_VERSION = 3;
     private static final double DEFAULT_FRAME_SECONDS = 1.0 / 60.0;
     private static final double NANOS_PER_SECOND = 1.0e9;
+    private static final float MIN_MAX_FPS = 1.0f;
+    private static final long DEADLINE_TOLERANCE_DIVISOR = 5;
+    private static final float DEFAULT_PLAYBACK_RATE = 1.0f;
 
     public interface Listener {
         void onContextCreated(SynesthesiaContext context);
@@ -26,13 +33,18 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     private final SynesthesiaConfiguration configuration;
     private final Listener listener;
+    private final long frameIntervalNanos;
     private volatile SynesthesiaContext context;
     private volatile boolean paused;
+    private volatile float playbackRate = DEFAULT_PLAYBACK_RATE;
+    private float appliedPlaybackRate = DEFAULT_PLAYBACK_RATE;
     private long lastFrameNanos;
+    private long nextDeadlineNanos;
 
     public SynesthesiaRenderer(SynesthesiaConfiguration configuration, Listener listener) {
         this.configuration = configuration;
         this.listener = listener;
+        this.frameIntervalNanos = frameIntervalNanos(configuration.getMaxFps());
     }
 
     public static void configure(GLSurfaceView view) {
@@ -55,7 +67,12 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             if (paused)
                 created.pause();
 
+            appliedPlaybackRate = playbackRate;
+            created.setPlaybackRate(appliedPlaybackRate);
+            logPlaybackRate(appliedPlaybackRate);
+
             lastFrameNanos = 0;
+            nextDeadlineNanos = 0;
             context = created;
 
             if (listener != null)
@@ -81,10 +98,26 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         if (current == null)
             return;
 
+        applyPlaybackRate(current);
+
+        if (frameIntervalNanos > 0 && !paused)
+            waitForDeadline();
+
         long now = System.nanoTime();
         double deltaSeconds = lastFrameNanos != 0 ? (now - lastFrameNanos) / NANOS_PER_SECOND : firstFrameSeconds();
         lastFrameNanos = now;
         current.render(deltaSeconds, 0);
+
+        if (frameIntervalNanos > 0)
+            advanceDeadline(now);
+    }
+
+    public float getPlaybackRate() {
+        return playbackRate;
+    }
+
+    public void setPlaybackRate(float rate) {
+        playbackRate = rate;
     }
 
     public void pause() {
@@ -98,6 +131,7 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     public void resume() {
         paused = false;
         lastFrameNanos = 0;
+        nextDeadlineNanos = 0;
         SynesthesiaContext current = context;
 
         if (current != null)
@@ -118,6 +152,48 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
         if (lost != null)
             lost.closeAfterContextLoss();
+    }
+
+    private void applyPlaybackRate(SynesthesiaContext current) {
+        float rate = playbackRate;
+
+        if (Float.compare(rate, appliedPlaybackRate) == 0)
+            return;
+
+        appliedPlaybackRate = rate;
+        current.setPlaybackRate(rate);
+        logPlaybackRate(rate);
+    }
+
+    private static void logPlaybackRate(float rate) {
+        Log.i(LOG_TAG, "SynesthesiaRenderer playback rate " + rate + " applied on " + Thread.currentThread().getName());
+    }
+
+    private void waitForDeadline() {
+        if (nextDeadlineNanos == 0)
+            return;
+
+        long wakeNanos = nextDeadlineNanos - frameIntervalNanos / DEADLINE_TOLERANCE_DIVISOR;
+        long remaining = wakeNanos - System.nanoTime();
+
+        while (remaining > 0 && !paused) {
+            LockSupport.parkNanos(remaining);
+            remaining = wakeNanos - System.nanoTime();
+        }
+    }
+
+    private void advanceDeadline(long now) {
+        nextDeadlineNanos += frameIntervalNanos;
+
+        if (nextDeadlineNanos < now)
+            nextDeadlineNanos = now + frameIntervalNanos;
+    }
+
+    private static long frameIntervalNanos(float maxFps) {
+        if (!(maxFps > 0.0f) || Float.isInfinite(maxFps))
+            return 0;
+
+        return Math.round(NANOS_PER_SECOND / Math.max(maxFps, MIN_MAX_FPS));
     }
 
     private double firstFrameSeconds() {

@@ -638,6 +638,7 @@ if(SYNESTHESIA_VIBE_GL_DEV)
     ${BEATDROP_SRC_DIR}/render/gl/screen_borders.cpp
     ${BEATDROP_SRC_DIR}/render/gl/noise_textures.cpp
     ${BEATDROP_SRC_DIR}/render/gl/blur_chain.cpp
+    ${BEATDROP_SRC_DIR}/render/gl/luminance_limiter.cpp
     ${BEATDROP_SRC_DIR}/render/gl/preset_shader_header.cpp
     ${BEATDROP_SRC_DIR}/render/gl/shader_translator.cpp
     ${BEATDROP_SRC_DIR}/render/gl/shader_prologue.cpp
