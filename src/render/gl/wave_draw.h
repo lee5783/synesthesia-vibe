@@ -26,6 +26,7 @@ struct WaveDrawInput
     float aspectY;
     int texSizeX;
     int texSizeY;
+    float stepFraction = 1.0f;
 };
 
 void DrawWave(const WaveDrawInput& input, const float* fL, const float* fR, const DrawProgram& program, MeshBuffer& mesh);

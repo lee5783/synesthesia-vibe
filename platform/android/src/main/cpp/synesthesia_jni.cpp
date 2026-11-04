@@ -415,6 +415,12 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeSetPlaybackRate(JNIEnv*, jclas
     sv_set_playback_rate(ToContext(handle), rate);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetSlowMotion(JNIEnv*, jclass, jlong handle, jint mode)
+{
+    sv_set_slow_motion(ToContext(handle), mode == SV_SLOW_MOTION_FRACTIONAL ? SV_SLOW_MOTION_FRACTIONAL : SV_SLOW_MOTION_INTERPOLATE);
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeLastError(JNIEnv* env, jclass, jlong handle)
 {

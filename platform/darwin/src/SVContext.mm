@@ -117,6 +117,11 @@ float SVNormalizedPlaybackRate(float rate)
     return isfinite(rate) ? fminf(fmaxf(rate, kMinimumPlaybackRate), kMaximumPlaybackRate) : kDefaultPlaybackRate;
 }
 
+SVSlowMotion SVNormalizedSlowMotion(SVSlowMotion mode)
+{
+    return mode == SVSlowMotionFractional ? SVSlowMotionFractional : SVSlowMotionInterpolate;
+}
+
 @interface SVContext ()
 
 @property (nonatomic, copy, readwrite) SVContextConfiguration *configuration;
@@ -128,6 +133,7 @@ float SVNormalizedPlaybackRate(float rate)
 {
     sv_context* _context;
     float _playbackRate;
+    SVSlowMotion _slowMotion;
 #if DEBUG
     NSThread* _renderThread;
 #endif
@@ -142,6 +148,7 @@ float SVNormalizedPlaybackRate(float rate)
 
     _configuration = [configuration copy];
     _playbackRate = kDefaultPlaybackRate;
+    _slowMotion = SVSlowMotionInterpolate;
 #if DEBUG
     _renderThread = [NSThread currentThread];
 #endif
@@ -336,6 +343,19 @@ float SVNormalizedPlaybackRate(float rate)
 
     if (_context != nullptr)
         sv_set_playback_rate(_context, _playbackRate);
+}
+
+- (SVSlowMotion)slowMotion
+{
+    return _slowMotion;
+}
+
+- (void)setSlowMotion:(SVSlowMotion)slowMotion
+{
+    _slowMotion = SVNormalizedSlowMotion(slowMotion);
+
+    if (_context != nullptr)
+        sv_set_slow_motion(_context, _slowMotion == SVSlowMotionFractional ? SV_SLOW_MOTION_FRACTIONAL : SV_SLOW_MOTION_INTERPOLATE);
 }
 
 - (SVAudioLevels)audioLevels

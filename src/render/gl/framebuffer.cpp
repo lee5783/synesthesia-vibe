@@ -27,14 +27,14 @@ Framebuffer::~Framebuffer()
     Destroy();
 }
 
-bool Framebuffer::Create(int width, int height)
+bool Framebuffer::Create(int width, int height, TextureFormat format)
 {
     Destroy();
 
     if (width <= 0 || height <= 0)
         return false;
 
-    if (!m_color.Create(width, height))
+    if (!m_color.Create(width, height, format))
         return false;
 
     glGenFramebuffers(1, &m_id);
@@ -87,7 +87,34 @@ bool Framebuffer::Resize(int width, int height)
     if (m_id != 0 && width == m_width && height == m_height)
         return true;
 
-    return Create(width, height);
+    return Create(width, height, m_color.Format());
+}
+
+bool Framebuffer::SetColorFormat(TextureFormat format)
+{
+    if (m_id == 0)
+        return false;
+
+    if (format == m_color.Format())
+        return true;
+
+    if (!m_color.SetFormat(format))
+        return false;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, m_id);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_color.Id(), 0);
+
+    const unsigned int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    if (status != GL_FRAMEBUFFER_COMPLETE)
+    {
+        fprintf(stderr, "render_gl: Framebuffer::SetColorFormat %s incomplete FBO status 0x%04X at %dx%d\n",
+            TextureFormatName(format), status, m_width, m_height);
+        return false;
+    }
+
+    return CheckGlError("Framebuffer::SetColorFormat");
 }
 
 void Framebuffer::Bind() const

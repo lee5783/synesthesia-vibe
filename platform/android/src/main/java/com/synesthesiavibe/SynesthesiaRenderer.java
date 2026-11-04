@@ -38,6 +38,8 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     private volatile boolean paused;
     private volatile float playbackRate = DEFAULT_PLAYBACK_RATE;
     private float appliedPlaybackRate = DEFAULT_PLAYBACK_RATE;
+    private volatile int slowMotion = SynesthesiaContext.SLOW_MOTION_INTERPOLATE;
+    private int appliedSlowMotion = SynesthesiaContext.SLOW_MOTION_INTERPOLATE;
     private long lastFrameNanos;
     private long nextDeadlineNanos;
 
@@ -71,6 +73,10 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             created.setPlaybackRate(appliedPlaybackRate);
             logPlaybackRate(appliedPlaybackRate);
 
+            appliedSlowMotion = slowMotion;
+            created.setSlowMotion(appliedSlowMotion);
+            logSlowMotion(appliedSlowMotion);
+
             lastFrameNanos = 0;
             nextDeadlineNanos = 0;
             context = created;
@@ -99,6 +105,7 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             return;
 
         applyPlaybackRate(current);
+        applySlowMotion(current);
 
         if (frameIntervalNanos > 0 && !paused)
             waitForDeadline();
@@ -118,6 +125,14 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     public void setPlaybackRate(float rate) {
         playbackRate = rate;
+    }
+
+    public int getSlowMotion() {
+        return slowMotion;
+    }
+
+    public void setSlowMotion(int mode) {
+        slowMotion = SynesthesiaContext.normalizeSlowMotion(mode);
     }
 
     public void pause() {
@@ -163,6 +178,21 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         appliedPlaybackRate = rate;
         current.setPlaybackRate(rate);
         logPlaybackRate(rate);
+    }
+
+    private void applySlowMotion(SynesthesiaContext current) {
+        int mode = slowMotion;
+
+        if (mode == appliedSlowMotion)
+            return;
+
+        appliedSlowMotion = mode;
+        current.setSlowMotion(mode);
+        logSlowMotion(mode);
+    }
+
+    private static void logSlowMotion(int mode) {
+        Log.i(LOG_TAG, "SynesthesiaRenderer slow motion " + mode + " applied on " + Thread.currentThread().getName());
     }
 
     private static void logPlaybackRate(float rate) {

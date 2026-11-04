@@ -71,6 +71,7 @@ void DrawCustomWaves(const CustomWavesInput& input, const DrawProgram& program, 
     const float m_fInvAspectY = input.invAspectY;
     const int m_nTexSizeX = input.texSizeX;
     const int m_nTexSizeY = input.texSizeY;
+    const float fStepFraction = input.stepFraction;
 
     program.Bind();
 
@@ -197,7 +198,7 @@ void DrawCustomWaves(const CustomWavesInput& input, const DrawProgram& program, 
 						}
                         v[j].z = 0;
                         v[j].Diffuse =
-                            ((((int)(*pState->m_wave[i].var_pp_a * 255 * alpha_mult)) & 0xFF) << 24) |
+                            ((((int)(ScaleAlphaForStep(*pState->m_wave[i].var_pp_a, fStepFraction, pState->m_wave[i].bAdditive != 0) * 255 * alpha_mult)) & 0xFF) << 24) |
                             ((((int)(*pState->m_wave[i].var_pp_r * 255)) & 0xFF) << 16) |
                             ((((int)(*pState->m_wave[i].var_pp_g * 255)) & 0xFF) <<  8) |
                             ((((int)(*pState->m_wave[i].var_pp_b * 255)) & 0xFF)      );

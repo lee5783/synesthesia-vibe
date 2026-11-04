@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
             maxLuminance = intent.getFloatExtra(EXTRA_MAX_LUMINANCE, 0f),
             flashLimit = intent.getFloatExtra(EXTRA_FLASH_LIMIT, 0f),
             playbackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, 1f),
+            slowMotion = intent.getStringExtra(EXTRA_SLOW_MOTION),
             validatePath = intent.getStringExtra(EXTRA_VALIDATE)?.let(::File),
             validateText = intent.getStringExtra(EXTRA_VALIDATE_TEXT),
             temporaryDirectory = cacheDir,
@@ -162,6 +163,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_MAX_LUMINANCE = "maxLuminance"
         const val EXTRA_FLASH_LIMIT = "flashLimit"
         const val EXTRA_PLAYBACK_RATE = "playbackRate"
+        const val EXTRA_SLOW_MOTION = "slowMotion"
         const val EXTRA_VALIDATE = "validate"
         const val EXTRA_VALIDATE_TEXT = "validateText"
     }

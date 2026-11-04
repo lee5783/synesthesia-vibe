@@ -17,6 +17,7 @@
 #include "blur_chain.h"
 #include "disk_textures.h"
 #include "draw_program.h"
+#include "frame_interpolator.h"
 #include "frame_targets.h"
 #include "luminance_limiter.h"
 #include "mesh.h"
@@ -47,6 +48,7 @@ struct BdGlPipeline
     render_gl::MeshBuffer compMesh;
     render_gl::CompositeGrid compGrid;
     render_gl::LuminanceLimiter limiter;
+    render_gl::FrameInterpolator interpolator;
 
     std::vector<render_core::Vertex> warpVerts;
 
@@ -63,16 +65,20 @@ struct BdGlPipeline
     bool resourcesBuilt;
     bool ready;
     bool limiterEnabled;
+    bool interpolatorFailed;
+    bool floatTargetsFailed;
 };
 
 void BdGlPipelineCreate(sv_context* ctx);
 void BdGlPipelineResize(sv_context* ctx);
 void BdGlPipelineDestroy(sv_context* ctx);
 std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetDir);
+void BdGlSetFractionalTargets(sv_context* ctx, bool active);
 
 void BdGlRenderFrame(sv_context* ctx, uint32_t targetFbo);
 void BdGlBeginFrame(sv_context* ctx);
 void BdGlStepFrame(sv_context* ctx);
 void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo);
+void BdGlPresentInterpolatedFrame(sv_context* ctx, uint32_t targetFbo, bool stepped, bool restart, float alpha);
 
 #endif

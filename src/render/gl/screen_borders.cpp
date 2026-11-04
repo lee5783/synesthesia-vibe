@@ -45,7 +45,7 @@ void DrawDarkenCenter(const BorderDrawInput& input, const DrawProgram& program, 
 		memset(v3, 0, sizeof(WFVERTEX)*6);
 
 		// colors:
-		v3[0].Diffuse = PackColorRgba01(0, 0, 0, 3.0f/32.0f);
+		v3[0].Diffuse = PackColorRgba01(0, 0, 0, static_cast<float>(ScaleAlphaForStep(3.0f/32.0f, input.stepFraction, false)));
 		v3[1].Diffuse = PackColorRgba01(0, 0, 0, 0.0f/32.0f);
 		v3[2].Diffuse = v3[1].Diffuse;
 		v3[3].Diffuse = v3[1].Diffuse;
@@ -105,7 +105,7 @@ void DrawBorders(const BorderDrawInput& input, const DrawProgram& program, MeshB
 			float a = (it==0) ? (float)*m_pState->var_pf_ob_a : (float)*m_pState->var_pf_ib_a;
 			if (a > 0.001f)
 			{
-				v3[0].Diffuse = PackColorRgba01(r,g,b,a);
+				v3[0].Diffuse = PackColorRgba01(r,g,b,static_cast<float>(ScaleAlphaForStep(a, input.stepFraction, false)));
 				v3[1].Diffuse = v3[0].Diffuse;
 				v3[2].Diffuse = v3[0].Diffuse;
 				v3[3].Diffuse = v3[0].Diffuse;

@@ -108,6 +108,7 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     visualizerView.configuration = configuration;
     visualizerView.renderScale = VisualizerLaunchRenderScale(arguments);
     visualizerView.playbackRate = VisualizerLaunchFloat(arguments, @"--playback-rate", 1.0f);
+    visualizerView.slowMotion = [VisualizerLaunchValue(arguments, @"--slow-motion") isEqualToString:@"fractional"] ? SVSlowMotionFractional : SVSlowMotionInterpolate;
     visualizerView.delegate = self;
     self.visualizerView = visualizerView;
     self.view = visualizerView;
@@ -146,6 +147,17 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 {
     VisualizerLog([NSString stringWithFormat:@"playback rate=%.3f", playbackRate]);
     self.visualizerView.playbackRate = playbackRate;
+}
+
+- (SVSlowMotion)slowMotion
+{
+    return self.visualizerView.slowMotion;
+}
+
+- (void)setSlowMotion:(SVSlowMotion)slowMotion
+{
+    VisualizerLog([NSString stringWithFormat:@"slow motion=%ld", (long)slowMotion]);
+    self.visualizerView.slowMotion = slowMotion;
 }
 
 - (CGFloat)renderScale
@@ -333,8 +345,8 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 
 - (void)view:(SVView *)view didCreateContext:(SVContext *)context
 {
-    VisualizerLog([NSString stringWithFormat:@"context created drawable=%.0fx%.0f playbackRate=%.3f maxLuminance=%.2f flashLimit=%.2f", view.drawableSize.width, view.drawableSize.height,
-        context.playbackRate, context.configuration.maxLuminance, context.configuration.flashLimit]);
+    VisualizerLog([NSString stringWithFormat:@"context created drawable=%.0fx%.0f playbackRate=%.3f slowMotion=%ld maxLuminance=%.2f flashLimit=%.2f", view.drawableSize.width, view.drawableSize.height,
+        context.playbackRate, (long)context.slowMotion, context.configuration.maxLuminance, context.configuration.flashLimit]);
     [self applyPendingPresetWithContext:context];
     [self scheduleLaunchSnapshot];
 

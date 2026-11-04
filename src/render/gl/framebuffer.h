@@ -22,9 +22,10 @@ public:
     Framebuffer(const Framebuffer&) = delete;
     Framebuffer& operator=(const Framebuffer&) = delete;
 
-    bool Create(int width, int height);
+    bool Create(int width, int height, TextureFormat format = TextureFormat::Rgba8);
     void Destroy();
     bool Resize(int width, int height);
+    bool SetColorFormat(TextureFormat format);
 
     void Bind() const;
     void Unbind() const;

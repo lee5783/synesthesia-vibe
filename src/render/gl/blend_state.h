@@ -35,6 +35,10 @@ void SetBlendAlphaFlipped();
 
 void SetBlendAdditive();
 
+void SetBlendConstantScale(float scale);
+
+double ScaleAlphaForStep(double alpha, float stepFraction, bool bAdditive);
+
 void SetDefaultDrawState();
 
 void SetPointSize(float size);
