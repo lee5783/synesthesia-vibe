@@ -34,6 +34,7 @@ void DrawCustomShapes(const CustomShapesInput& input, const DrawProgram& texture
     const float m_fAspectY = input.aspectY;
     const int m_nTexSizeX = input.texSizeX;
     const int m_nTexSizeY = input.texSizeY;
+    const float fStepFraction = input.stepFraction;
 
 	int num_reps = (m_pState->m_bBlending) ? 2 : 1;
 	for (int rep=0; rep<num_reps; rep++)
@@ -63,7 +64,8 @@ void DrawCustomShapes(const CustomShapesInput& input, const DrawProgram& texture
                     if (sides<3) sides=3;
                     if (sides>100) sides=100;
 
-                    SetBlendState(true, BlendFactor::SrcAlpha, ((int)(*pState->m_shape[i].var_pf_additive) != 0) ? BlendFactor::One : BlendFactor::InvSrcAlpha);
+                    const bool bAdditive = (int)(*pState->m_shape[i].var_pf_additive) != 0;
+                    SetBlendState(true, BlendFactor::SrcAlpha, bAdditive ? BlendFactor::One : BlendFactor::InvSrcAlpha);
 
                     SPRITEVERTEX v[512];  // for textured shapes (has texcoords)
                     WFVERTEX v2[512];     // for untextured shapes + borders
@@ -77,12 +79,12 @@ void DrawCustomShapes(const CustomShapesInput& input, const DrawProgram& texture
                     v[0].tu = 0.5f;
                     v[0].tv = 0.5f;
                     v[0].Diffuse =
-                        ((((int)(*pState->m_shape[i].var_pf_a * 255 * alpha_mult)) & 0xFF) << 24) |
+                        ((((int)(ScaleAlphaForStep(*pState->m_shape[i].var_pf_a, fStepFraction, bAdditive) * 255 * alpha_mult)) & 0xFF) << 24) |
                         ((((int)(*pState->m_shape[i].var_pf_r * 255)) & 0xFF) << 16) |
                         ((((int)(*pState->m_shape[i].var_pf_g * 255)) & 0xFF) <<  8) |
                         ((((int)(*pState->m_shape[i].var_pf_b * 255)) & 0xFF)      );
                     v[1].Diffuse =
-                        ((((int)(*pState->m_shape[i].var_pf_a2 * 255 * alpha_mult)) & 0xFF) << 24) |
+                        ((((int)(ScaleAlphaForStep(*pState->m_shape[i].var_pf_a2, fStepFraction, bAdditive) * 255 * alpha_mult)) & 0xFF) << 24) |
                         ((((int)(*pState->m_shape[i].var_pf_r2 * 255)) & 0xFF) << 16) |
                         ((((int)(*pState->m_shape[i].var_pf_g2 * 255)) & 0xFF) <<  8) |
                         ((((int)(*pState->m_shape[i].var_pf_b2 * 255)) & 0xFF)      );
@@ -135,7 +137,7 @@ void DrawCustomShapes(const CustomShapesInput& input, const DrawProgram& texture
                         untexturedProgram.Bind();
 
                         v2[0].Diffuse =
-                            ((((int)(*pState->m_shape[i].var_pf_border_a * 255 * alpha_mult)) & 0xFF) << 24) |
+                            ((((int)(ScaleAlphaForStep(*pState->m_shape[i].var_pf_border_a, fStepFraction, bAdditive) * 255 * alpha_mult)) & 0xFF) << 24) |
                             ((((int)(*pState->m_shape[i].var_pf_border_r * 255)) & 0xFF) << 16) |
                             ((((int)(*pState->m_shape[i].var_pf_border_g * 255)) & 0xFF) <<  8) |
                             ((((int)(*pState->m_shape[i].var_pf_border_b * 255)) & 0xFF)      );

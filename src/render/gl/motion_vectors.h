@@ -23,6 +23,7 @@ struct MotionVectorsInput
     int gridX;
     int gridY;
     int texSizeX;
+    float stepFraction = 1.0f;
 };
 
 void DrawMotionVectors(const MotionVectorsInput& input, const DrawProgram& program, MeshBuffer& mesh);

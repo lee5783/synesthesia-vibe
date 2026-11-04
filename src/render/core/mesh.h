@@ -60,6 +60,7 @@ struct GridAlphaInput
     int texSizeY;
     int gridX;
     int gridY;
+    float stepFraction = 1.0f;
 };
 
 void ComputeGridAlphaValues(const GridAlphaInput& input, Vertex* verts, const VertInfo* vertinfo);

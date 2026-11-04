@@ -8,6 +8,7 @@
 export { AudioInput } from "./audio-input.js";
 export { CaptureSession } from "./capture-session.js";
 export { ResourceLoader } from "./resource-loader.js";
+export { SlowMotion } from "./slow-motion.js";
 export { SynesthesiaCanvas } from "./synesthesia-canvas.js";
 export { SynesthesiaContext } from "./synesthesia-context.js";
 export { SynesthesiaError } from "./synesthesia-error.js";

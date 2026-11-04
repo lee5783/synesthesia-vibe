@@ -34,15 +34,17 @@ public:
     void Reset();
 
     void Step(int frame, IRawClock& clock, double timeVariableResetDelay, bool externalResetRequested);
+    void StepExact(int frame, IRawClock& clock, double seconds, float fps, double timeVariableResetDelay);
 
     double GetTime() const { return m_time; }
-    float GetFps() const { return m_fps; }
+    float GetFps() const { return (m_exactFps > 0.0f) ? m_exactFps : m_fps; }
     double GetLastRawTime() const { return m_lastRawTime; }
     bool TimeWasReset() const { return m_resetOccurred; }
 
 private:
     double m_time;
     float m_fps;
+    float m_exactFps;
     double m_lastRawTime;
     long long m_highPrecisionFrequency;
     float m_timeHist[kTimeModelHistorySlots];

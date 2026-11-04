@@ -324,6 +324,10 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->lastFrameDt = 0.0;
     ctx->lastTargetFbo = 0;
     ctx->playbackRate = 1.0f;
+    ctx->slowMotion = SV_SLOW_MOTION_INTERPOLATE;
+    ctx->interpolatedLastFrame = false;
+    ctx->fractionalActive = false;
+    ctx->stepFraction = 1.0f;
     ctx->stepAccumulator = 0.0;
     ctx->lastWallSeconds = 0.0;
     ctx->resumePending = false;
@@ -434,7 +438,10 @@ extern "C" void sv_resume(sv_context* ctx)
         return;
 
     ctx->paused = false;
-    ctx->stepAccumulator = 0.0;
+
+    if (!ctx->interpolatedLastFrame || ctx->playbackRate >= 1.0f)
+        ctx->stepAccumulator = 0.0;
+
     ctx->lastWallSeconds = 0.0;
     ctx->resumePending = true;
 }
@@ -448,6 +455,17 @@ extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
         rate = 1.0f;
 
     ctx->playbackRate = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
+}
+
+extern "C" void sv_set_slow_motion(sv_context* ctx, sv_slow_motion mode)
+{
+    if (ctx == nullptr)
+        return;
+
+    if (mode != SV_SLOW_MOTION_FRACTIONAL)
+        mode = SV_SLOW_MOTION_INTERPOLATE;
+
+    ctx->slowMotion = mode;
 }
 
 extern "C" const char* sv_last_error(sv_context* ctx)

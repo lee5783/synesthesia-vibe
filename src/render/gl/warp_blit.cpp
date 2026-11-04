@@ -9,6 +9,7 @@
 #include "blend_state.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace render_gl
 {
@@ -20,10 +21,18 @@ uint32_t PackDecayColor(float decay)
     return (channel << 16) | (channel << 8) | channel;
 }
 
+float DecayForStep(float decay, float stepFraction)
+{
+    const float packed = static_cast<float>(PackDecayColor(decay) & 0xFFu) / 255.0f;
+
+    return powf(packed, stepFraction);
+}
+
 void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program, MeshBuffer& mesh,
     std::vector<render_core::Vertex>& scratch, Framebuffer& source, Framebuffer& dest)
 {
-    const uint32_t decayColor = PackDecayColor(input.decay);
+    const bool bFractionalStep = input.stepFraction != 1.0f;
+    const uint32_t decayColor = bFractionalStep ? PackDecayColor(1.0f) : PackDecayColor(input.decay);
     const size_t vertexCount = std::min(static_cast<size_t>(input.vertexCount), scratch.size());
 
     for (size_t i = 0; i < vertexCount; i++)
@@ -37,7 +46,10 @@ void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program,
     source.ColorTexture().SetWrapRepeat(input.wrap);
     dest.Bind();
 
-    SetBlendOpaque();
+    if (bFractionalStep)
+        SetBlendConstantScale(DecayForStep(input.decay, input.stepFraction));
+    else
+        SetBlendOpaque();
 
     program.Bind();
     program.SetUvOffset(0.0f, 0.0f);
@@ -48,6 +60,9 @@ void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program,
     mesh.DrawIndexedTriangles(input.indexCount);
 
     program.SetUvOffset(0.0f, 0.0f);
+
+    if (bFractionalStep)
+        SetBlendOpaque();
 }
 
 }

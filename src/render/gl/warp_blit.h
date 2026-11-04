@@ -28,9 +28,12 @@ struct WarpBlitInput
     bool wrap;
     int texSizeX;
     int texSizeY;
+    float stepFraction = 1.0f;
 };
 
 uint32_t PackDecayColor(float decay);
+
+float DecayForStep(float decay, float stepFraction);
 
 void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program, MeshBuffer& mesh,
     std::vector<render_core::Vertex>& scratch, Framebuffer& source, Framebuffer& dest);

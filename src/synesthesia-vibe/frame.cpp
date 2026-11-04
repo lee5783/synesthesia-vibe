@@ -28,6 +28,8 @@ namespace
     constexpr bool kBeatdropHardCutsDisabled = true;
     constexpr float kBeatdropHardCutLoudnessThresh = 2.5f;
     constexpr float kBeatdropHardCutHalflife = 60.0f;
+    constexpr double kBeatdropWholeStepTolerance = 1.0e-6;
+    constexpr double kBeatdropMinStepFraction = 1.0e-3;
 
     int BdWeekdayFromDate(int year, int month, int day)
     {
@@ -308,17 +310,32 @@ FrameInputs BdMakeFrameInputs(sv_context* ctx)
 
 namespace
 {
-    void BdStepSimulationClock(sv_context* ctx)
+    void BdApplyTimeReset(sv_context* ctx)
     {
-        ctx->rawClock.Advance();
-        ctx->timeModel.Step(ctx->frame, ctx->rawClock, kBeatdropTimeVariableResetDelay, false);
-
         if (ctx->timeModel.TimeWasReset())
         {
             ctx->presetStartTime = static_cast<float>(ctx->timeModel.GetTime());
             ctx->nextPresetTime = -1.0f;
             ctx->nextPresetTimeWasInitialized = false;
         }
+    }
+
+    void BdStepSimulationClock(sv_context* ctx)
+    {
+        ctx->rawClock.Advance();
+        ctx->timeModel.Step(ctx->frame, ctx->rawClock, kBeatdropTimeVariableResetDelay, false);
+
+        BdApplyTimeReset(ctx);
+    }
+
+    void BdStepFractionalClock(sv_context* ctx, double fraction)
+    {
+        const double seconds = fraction * kBeatdropSimulationStepSeconds;
+
+        ctx->rawClock.Advance();
+        ctx->timeModel.StepExact(ctx->frame, ctx->rawClock, seconds, static_cast<float>(1.0 / seconds), kBeatdropTimeVariableResetDelay);
+
+        BdApplyTimeReset(ctx);
     }
 
     void BdAnalyzeAudio(sv_context* ctx, float fps)
@@ -467,10 +484,82 @@ namespace
             ctx->displayFps = kBeatdropDisplayFpsDamping * ctx->displayFps + (1.0f - kBeatdropDisplayFpsDamping) * measured;
     }
 
+    bool BdFractionalWanted(sv_context* ctx)
+    {
+        return ctx->slowMotion == SV_SLOW_MOTION_FRACTIONAL && ctx->playbackRate < 1.0f;
+    }
+
+    void BdSetFractionalActive(sv_context* ctx, bool active)
+    {
+        ctx->fractionalActive = active;
+        ctx->stepAccumulator = 0.0;
+        BdGlSetFractionalTargets(ctx, active);
+    }
+
+    void BdRenderFractionalFrame(sv_context* ctx, double frameSeconds, uint32_t target_fbo)
+    {
+        const double simSeconds = ctx->stepAccumulator + frameSeconds * static_cast<double>(ctx->playbackRate);
+        const double fraction = simSeconds / kBeatdropSimulationStepSeconds;
+
+        if (ctx->frame > 0 && fraction < kBeatdropMinStepFraction)
+        {
+            ctx->stepAccumulator = simSeconds;
+            BdGlPresentFrame(ctx, target_fbo);
+            ctx->interpolatedLastFrame = false;
+            return;
+        }
+
+        ctx->stepAccumulator = 0.0;
+
+        const int passes = std::min(std::max(static_cast<int>(std::ceil(fraction - kBeatdropWholeStepTolerance)), 1),
+            kBeatdropMaxSimulationStepsPerFrame);
+        const double passFraction = std::min(fraction / passes, 1.0);
+        const bool wholePasses = passFraction > 1.0 - kBeatdropWholeStepTolerance;
+
+        BdAnalyzeAudio(ctx, ctx->displayFps);
+        BdGlBeginFrame(ctx);
+
+        for (int i = 0; i < passes; i++)
+        {
+            if (ctx->frame == 0 || wholePasses)
+            {
+                BdStepSimulationClock(ctx);
+                ctx->stepFraction = 1.0f;
+            }
+            else
+            {
+                BdStepFractionalClock(ctx, passFraction);
+                ctx->stepFraction = static_cast<float>(passFraction);
+            }
+
+            BdRunFrameEquations(ctx);
+
+            BdGlStepFrame(ctx);
+
+            ctx->frame++;
+        }
+
+        ctx->stepFraction = 1.0f;
+
+        BdGlPresentFrame(ctx, target_fbo);
+        ctx->interpolatedLastFrame = false;
+    }
+
     void BdRenderFixedStepFrame(sv_context* ctx, double dt_seconds, uint32_t target_fbo)
     {
         const double frameSeconds = BdHostFrameSeconds(ctx, dt_seconds);
         BdUpdateDisplayFps(ctx, frameSeconds);
+
+        const bool fractional = BdFractionalWanted(ctx);
+
+        if (fractional != ctx->fractionalActive)
+            BdSetFractionalActive(ctx, fractional);
+
+        if (fractional)
+        {
+            BdRenderFractionalFrame(ctx, frameSeconds, target_fbo);
+            return;
+        }
 
         const int steps = BdTakeSimulationSteps(ctx, frameSeconds);
 
@@ -487,7 +576,19 @@ namespace
             ctx->frame++;
         }
 
-        BdGlPresentFrame(ctx, target_fbo);
+        const bool interpolate = ctx->playbackRate < 1.0f;
+
+        if (interpolate)
+        {
+            const float alpha = static_cast<float>(std::min(std::max(ctx->stepAccumulator / kBeatdropSimulationStepSeconds, 0.0), 1.0));
+            BdGlPresentInterpolatedFrame(ctx, target_fbo, steps > 0, !ctx->interpolatedLastFrame, alpha);
+        }
+        else
+        {
+            BdGlPresentFrame(ctx, target_fbo);
+        }
+
+        ctx->interpolatedLastFrame = interpolate;
     }
 }
 

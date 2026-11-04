@@ -28,6 +28,7 @@ struct CustomWavesInput
     float invAspectY;
     int texSizeX;
     int texSizeY;
+    float stepFraction = 1.0f;
 };
 
 void DrawCustomWaves(const CustomWavesInput& input, const DrawProgram& program, MeshBuffer& mesh);

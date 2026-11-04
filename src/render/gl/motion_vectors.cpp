@@ -130,7 +130,7 @@ void DrawMotionVectors(const MotionVectorsInput& input, const DrawProgram& progr
 
 			WFVERTEX v[(64+1)*2];
 			memset(v, 0, sizeof(WFVERTEX)*(64+1)*2);
-			v[0].Diffuse = PackColorRgba01((float)*m_pState->var_pf_mv_r,(float)*m_pState->var_pf_mv_g,(float)*m_pState->var_pf_mv_b,(float)*m_pState->var_pf_mv_a);
+			v[0].Diffuse = PackColorRgba01((float)*m_pState->var_pf_mv_r,(float)*m_pState->var_pf_mv_g,(float)*m_pState->var_pf_mv_b,static_cast<float>(ScaleAlphaForStep((float)*m_pState->var_pf_mv_a, input.stepFraction, false)));
 			for (x=1; x<(nX+1)*2; x++)
 				v[x].Diffuse = v[0].Diffuse;
 

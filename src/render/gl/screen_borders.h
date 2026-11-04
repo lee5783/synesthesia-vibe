@@ -21,6 +21,7 @@ struct BorderDrawInput
     CState* state;
     bool screenDependentRenderMode;
     float aspectY;
+    float stepFraction = 1.0f;
 };
 
 void DrawDarkenCenter(const BorderDrawInput& input, const DrawProgram& program, MeshBuffer& mesh);

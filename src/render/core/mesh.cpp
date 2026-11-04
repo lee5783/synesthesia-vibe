@@ -17,6 +17,16 @@
 namespace render_core
 {
 
+namespace
+{
+
+float ScaleFactorForStep(float factor, float stepFraction)
+{
+    return copysignf(powf(fabsf(factor), stepFraction), factor);
+}
+
+}
+
 float SquishToCenter(float x, float fExp)
 {
     if (x > 0.5f)
@@ -284,6 +294,23 @@ void ComputeGridAlphaValues(const GridAlphaInput& input, Vertex* verts, const Ve
 				                           fZoom, fZoomExp, fRot, fWarp, fCX, fCY, fDX, fDY, fSX, fSY);
 
 				float fZoom2 = powf(fZoom, powf(fZoomExp, vertinfo[n].rad*2.0f - 1.0f));
+				float fStepSX = fSX;
+				float fStepSY = fSY;
+				float fStepWarp = fWarp;
+				float fStepRot = fRot;
+				float fStepDX = fDX;
+				float fStepDY = fDY;
+
+				if (input.stepFraction != 1.0f)
+				{
+					fZoom2 = ScaleFactorForStep(fZoom2, input.stepFraction);
+					fStepSX = ScaleFactorForStep(fSX, input.stepFraction);
+					fStepSY = ScaleFactorForStep(fSY, input.stepFraction);
+					fStepWarp = fWarp*input.stepFraction;
+					fStepRot = fRot*input.stepFraction;
+					fStepDX = fDX*input.stepFraction;
+					fStepDY = fDY*input.stepFraction;
+				}
 
 				// initial texcoords, w/built-in zoom factor
 				float fZoom2Inv = 1.0f/fZoom2;
@@ -301,27 +328,27 @@ void ComputeGridAlphaValues(const GridAlphaInput& input, Vertex* verts, const Ve
 				}
 
 				// stretch on X, Y:
-				u = (u - fCX)/fSX + fCX;
-				v = (v - fCY)/fSY + fCY;
+				u = (u - fCX)/fStepSX + fCX;
+				v = (v - fCY)/fStepSY + fCY;
 
 				// warping:
-					u += fWarp*0.0035f*sinf(fWarpTime*0.333f + fWarpScaleInv*(verts[n].x*f[0] - verts[n].y*f[3]));
-					v += fWarp*0.0035f*cosf(fWarpTime*0.375f - fWarpScaleInv*(verts[n].x*f[2] + verts[n].y*f[1]));
-					u += fWarp*0.0035f*cosf(fWarpTime*0.753f - fWarpScaleInv*(verts[n].x*f[1] - verts[n].y*f[2]));
-					v += fWarp*0.0035f*sinf(fWarpTime*0.825f + fWarpScaleInv*(verts[n].x*f[0] + verts[n].y*f[3]));
+					u += fStepWarp*0.0035f*sinf(fWarpTime*0.333f + fWarpScaleInv*(verts[n].x*f[0] - verts[n].y*f[3]));
+					v += fStepWarp*0.0035f*cosf(fWarpTime*0.375f - fWarpScaleInv*(verts[n].x*f[2] + verts[n].y*f[1]));
+					u += fStepWarp*0.0035f*cosf(fWarpTime*0.753f - fWarpScaleInv*(verts[n].x*f[1] - verts[n].y*f[2]));
+					v += fStepWarp*0.0035f*sinf(fWarpTime*0.825f + fWarpScaleInv*(verts[n].x*f[0] + verts[n].y*f[3]));
 
 				// rotation:
 				float u2 = u - fCX;
 				float v2 = v - fCY;
 
-				float cos_rot = cosf(fRot);
-				float sin_rot = sinf(fRot);
+				float cos_rot = cosf(fStepRot);
+				float sin_rot = sinf(fStepRot);
 				u = u2*cos_rot - v2*sin_rot + fCX;
 				v = u2*sin_rot + v2*cos_rot + fCY;
 
 				// translation:
-				u -= fDX;
-				v -= fDY;
+				u -= fStepDX;
+				v -= fStepDY;
 
                 // undo aspect ratio fix:
 				if (!input.screenDependentRenderMode)
