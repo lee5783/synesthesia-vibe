@@ -1447,7 +1447,7 @@ void DrawWave(const WaveDrawInput& input, const float* fL, const float* fR, cons
 	// apply color & alpha
     // ALSO reverse all y values, to stay consistent with the pre-VMS milkdrop,
     //  which DIDN'T:
-	v1[0].Diffuse = PackColorRgba01(cr, cg, cb, static_cast<float>(ScaleAlphaForStep(alpha1, input.stepFraction, *m_pState->var_pf_wave_additive != 0)));
+	v1[0].Diffuse = PackColorRgba01(cr, cg, cb, alpha1);
 	for (i=0; i<nVerts1; i++)
     {
 		v1[i].Diffuse = v1[0].Diffuse;

@@ -26,7 +26,6 @@ struct CustomShapesInput
     float aspectY;
     int texSizeX;
     int texSizeY;
-    float stepFraction = 1.0f;
 };
 
 void DrawCustomShapes(const CustomShapesInput& input, const DrawProgram& texturedProgram,

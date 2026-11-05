@@ -8,9 +8,7 @@
 #ifndef __BEATDROP_RENDER_GL_FRAME_TARGETS_H__
 #define __BEATDROP_RENDER_GL_FRAME_TARGETS_H__ 1
 
-#include "draw_program.h"
 #include "framebuffer.h"
-#include "mesh_buffer.h"
 
 namespace render_gl
 {
@@ -22,10 +20,9 @@ class FrameTargets
 public:
     FrameTargets();
 
-    bool Create(int width, int height, TextureFormat format = TextureFormat::Rgba8);
+    bool Create(int width, int height);
     void Destroy();
     bool Resize(int width, int height);
-    bool ChangeFormat(TextureFormat format, const DrawProgram& program, MeshBuffer& quadMesh);
 
     void Swap();
     void ClearSource();
@@ -38,13 +35,11 @@ public:
 
     int Width() const { return m_vs[0].Width(); }
     int Height() const { return m_vs[0].Height(); }
-    TextureFormat Format() const { return m_format; }
     bool Valid() const { return m_vs[0].Valid() && m_vs[1].Valid(); }
 
 private:
     Framebuffer m_vs[2];
     int m_sourceIndex;
-    TextureFormat m_format;
 };
 
 }

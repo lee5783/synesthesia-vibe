@@ -82,10 +82,6 @@ struct sv_context
     uint32_t lastTargetFbo;
 
     float playbackRate;
-    sv_slow_motion slowMotion;
-    bool interpolatedLastFrame;
-    bool fractionalActive;
-    float stepFraction;
     double stepAccumulator;
     double lastWallSeconds;
     bool resumePending;

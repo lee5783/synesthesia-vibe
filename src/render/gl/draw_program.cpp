@@ -44,7 +44,7 @@ const char* const kTexturedFragmentSource =
     "void main()\n"
     "{\n"
     "    vec4 texel = texture(uTexture, vUv);\n"
-    "    fragColor = clamp(vec4(texel.rgb * vColor.rgb, vColor.a), 0.0, 1.0);\n"
+    "    fragColor = vec4(texel.rgb * vColor.rgb, vColor.a);\n"
     "}\n";
 
 const char* const kUntexturedFragmentSource =

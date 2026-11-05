@@ -11,7 +11,6 @@
 #include <cstdlib>
 #include <random>
 
-#include "blend_state.h"
 #include "context.h"
 #include "gl_error.h"
 #include "gl_loader.h"
@@ -115,26 +114,6 @@ namespace
         return BdGlUploadWarpIndices(ctx) && BdGlBuildCompositeGrid(ctx);
     }
 
-    void BdGlNoteFloatTargetsFailed(BdGlPipeline* gl)
-    {
-        gl->floatTargetsFailed = true;
-        fprintf(stderr, "synesthesia-vibe: RGBA16F feedback targets unavailable, fractional slow motion runs on RGBA8\n");
-    }
-
-    bool BdGlRecreateTargetsAsRgba8(sv_context* ctx)
-    {
-        BdGlPipeline* gl = ctx->gl;
-
-        if (gl->targets.Format() == render_gl::TextureFormat::Rgba8)
-            return false;
-
-        if (!gl->targets.Create(ctx->texsizeX, ctx->texsizeY, render_gl::TextureFormat::Rgba8))
-            return false;
-
-        BdGlNoteFloatTargetsFailed(gl);
-        return true;
-    }
-
     std::string BdGlBindStage(sv_context* ctx, render_gl::PresetShaderStage stage, const char* stageName, const char* shaderText,
         render_gl::PresetShaderInputs& inputs, bool& active)
     {
@@ -210,8 +189,6 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->gl->resourcesBuilt = false;
     ctx->gl->ready = false;
     ctx->gl->limiterEnabled = ctx->config.max_luminance > 0.0f || ctx->config.flash_limit > 0.0f;
-    ctx->gl->interpolatorFailed = false;
-    ctx->gl->floatTargetsFailed = false;
 
     BdGlReadDevOverrides(ctx->gl);
 
@@ -240,7 +217,7 @@ void BdGlPipelineResize(sv_context* ctx)
 
     BdGlPipeline* gl = ctx->gl;
 
-    if (!gl->targets.Resize(ctx->texsizeX, ctx->texsizeY) && !BdGlRecreateTargetsAsRgba8(ctx))
+    if (!gl->targets.Resize(ctx->texsizeX, ctx->texsizeY))
     {
         fprintf(stderr, "synesthesia-vibe: GL target resize failed at texsize %dx%d\n", ctx->texsizeX, ctx->texsizeY);
         ctx->lastError = "GL target resize failed";
@@ -257,7 +234,6 @@ void BdGlPipelineResize(sv_context* ctx)
     }
 
     gl->warpVerts.assign(ctx->meshVerts.size(), render_core::Vertex());
-    gl->interpolator.Destroy();
 
     if (gl->limiterEnabled && !gl->limiter.Resize(ctx->width, ctx->height))
     {
@@ -278,47 +254,6 @@ void BdGlPipelineResize(sv_context* ctx)
     ctx->framesSinceResize = 0;
 
     fprintf(stderr, "synesthesia-vibe: GL pipeline resized size=%dx%d texsize=%dx%d\n", ctx->width, ctx->height, ctx->texsizeX, ctx->texsizeY);
-}
-
-void BdGlSetFractionalTargets(sv_context* ctx, bool active)
-{
-    if (ctx == nullptr || ctx->gl == nullptr || !ctx->gl->ready)
-        return;
-
-    BdGlPipeline* gl = ctx->gl;
-
-    if (active)
-        gl->interpolator.Destroy();
-
-    render_gl::TextureFormat format = render_gl::TextureFormat::Rgba8;
-
-    if (active && !gl->floatTargetsFailed)
-    {
-        if (render_gl::HalfFloatColorTargetsSupported())
-            format = render_gl::TextureFormat::Rgba16F;
-        else
-            BdGlNoteFloatTargetsFailed(gl);
-    }
-
-    if (format == gl->targets.Format())
-        return;
-
-    render_gl::SetDefaultDrawState();
-
-    if (!gl->targets.ChangeFormat(format, gl->texturedProgram, gl->quadMesh))
-    {
-        if (active)
-            BdGlNoteFloatTargetsFailed(gl);
-        else
-            fprintf(stderr, "synesthesia-vibe: RGBA8 feedback targets unavailable, keeping %s after fractional slow motion\n",
-                render_gl::TextureFormatName(gl->targets.Format()));
-
-        gl->glErrorCount += render_gl::DrainGlErrors("BdGlSetFractionalTargets");
-        return;
-    }
-
-    gl->glErrorCount += render_gl::DrainGlErrors("BdGlSetFractionalTargets");
-    fprintf(stderr, "synesthesia-vibe: feedback targets %s\n", render_gl::TextureFormatName(format));
 }
 
 void BdGlPipelineDestroy(sv_context* ctx)
@@ -343,7 +278,6 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
 
     BdGlPipeline* gl = ctx->gl;
 
-    gl->interpolator.ResetHistory();
     gl->presetCache.BeginGeneration();
     gl->disk.BeginGeneration();
     gl->disk.SetDirectories(ctx->resourcePath + "/textures", presetDir, ctx->textureSearchPath);

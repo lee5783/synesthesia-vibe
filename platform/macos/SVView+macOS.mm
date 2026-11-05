@@ -113,7 +113,6 @@ namespace
     BOOL _hasPreferredFramesPerSecond;
     CGFloat _renderScale;
     float _playbackRate;
-    SVSlowMotion _slowMotion;
     BOOL _frameRateHintApplied;
     BOOL _surfaceBackingSizeEnabled;
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
@@ -148,7 +147,6 @@ namespace
     _effectivelyPaused = YES;
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
-    _slowMotion = SVSlowMotionInterpolate;
 
     NSOpenGLPixelFormatAttribute attributes[] = {
         NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
@@ -250,23 +248,6 @@ namespace
     fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
 }
 
-- (SVSlowMotion)slowMotion
-{
-    return _slowMotion;
-}
-
-- (void)setSlowMotion:(SVSlowMotion)slowMotion
-{
-    const SVSlowMotion normalized = SVNormalizedSlowMotion(slowMotion);
-
-    if (normalized == _slowMotion)
-        return;
-
-    _slowMotion = normalized;
-    _context.slowMotion = normalized;
-    fprintf(stderr, "SVView: slow motion %s\n", normalized == SVSlowMotionFractional ? "fractional" : "interpolate");
-}
-
 - (CGFloat)renderScale
 {
     return _renderScale;
@@ -316,7 +297,6 @@ namespace
 
     _context = context;
     context.playbackRate = _playbackRate;
-    context.slowMotion = _slowMotion;
     self.drawableSize = pixels;
     if (!_hasPreferredFramesPerSecond) {
         _preferredFramesPerSecond = SVNormalizedFramesPerSecond(configuration.maxFps);

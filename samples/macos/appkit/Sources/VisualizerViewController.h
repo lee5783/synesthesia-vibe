@@ -37,7 +37,6 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 @property (nonatomic, assign) float preferredFramesPerSecond;
 @property (nonatomic, assign) CGFloat renderScale;
 @property (nonatomic, assign) float playbackRate;
-@property (nonatomic, assign) SVSlowMotion slowMotion;
 
 - (void)loadPresetAtURL:(NSURL *)url;
 - (void)saveSnapshotToURL:(NSURL *)url completion:(void (^)(NSError *_Nullable error))completion;

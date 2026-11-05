@@ -15,7 +15,6 @@ namespace render_core
 TimeModel::TimeModel()
     : m_time(0)
     , m_fps(60)
-    , m_exactFps(0)
     , m_lastRawTime(0)
     , m_highPrecisionFrequency(0)
     , m_timeHistPos(0)
@@ -41,7 +40,6 @@ void TimeModel::Reset()
 void TimeModel::Step(int frame, IRawClock& clock, double timeVariableResetDelay, bool externalResetRequested)
 {
     m_resetOccurred = false;
-    m_exactFps = 0;
 
     if (frame==0)
     {
@@ -147,23 +145,6 @@ void TimeModel::Step(int frame, IRawClock& clock, double timeVariableResetDelay,
             float new_fps = (frame) / (new_hist_time - old_hist_time);
             m_fps = damping*m_fps + (1-damping)*new_fps;
         }
-    }
-}
-
-void TimeModel::StepExact(int frame, IRawClock& clock, double seconds, float fps, double timeVariableResetDelay)
-{
-    const double time = m_time;
-
-    Step(frame, clock, timeVariableResetDelay, false);
-
-    m_resetOccurred = false;
-    m_exactFps = fps;
-
-    m_time = time + seconds;
-    if (m_time >= timeVariableResetDelay)
-    {
-        m_time = 0;
-        m_resetOccurred = true;
     }
 }
 

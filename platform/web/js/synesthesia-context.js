@@ -5,7 +5,6 @@
 //  Created by lee5783 on 2026-10-12.
 //
 
-import { SlowMotion } from "./slow-motion.js";
 import { SynesthesiaError } from "./synesthesia-error.js";
 
 const RENDERER_UNAVAILABLE_PREFIX = "renderer unavailable";
@@ -189,11 +188,6 @@ export class SynesthesiaContext {
 
     setPlaybackRate(rate) {
         this.#module._sv_web_set_playback_rate(this.#requireHandle(), rate);
-    }
-
-    setSlowMotion(mode) {
-        const normalized = mode === SlowMotion.FRACTIONAL ? SlowMotion.FRACTIONAL : SlowMotion.INTERPOLATE;
-        this.#module._sv_web_set_slow_motion(this.#requireHandle(), normalized);
     }
 
     audioLevels() {

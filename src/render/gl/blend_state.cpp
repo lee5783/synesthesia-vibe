@@ -8,9 +8,6 @@
 #include "blend_state.h"
 #include "gl_headers.h"
 
-#include <algorithm>
-#include <cmath>
-
 namespace render_gl
 {
 
@@ -78,27 +75,6 @@ void SetDefaultDrawState()
 void SetBlendAdditive()
 {
     SetBlendState(true, BlendFactor::One, BlendFactor::One);
-}
-
-void SetBlendConstantScale(float scale)
-{
-    glEnable(GL_BLEND);
-    glBlendEquation(GL_FUNC_ADD);
-    glBlendColor(scale, scale, scale, 1.0f);
-    glBlendFunc(GL_CONSTANT_COLOR, GL_ZERO);
-}
-
-double ScaleAlphaForStep(double alpha, float stepFraction, bool bAdditive)
-{
-    if (stepFraction == 1.0f)
-        return alpha;
-
-    const double clamped = std::min(std::max(alpha, 0.0), 1.0);
-
-    if (bAdditive)
-        return clamped * stepFraction;
-
-    return 1.0 - pow(1.0 - clamped, static_cast<double>(stepFraction));
 }
 
 void SetPointSize(float size)

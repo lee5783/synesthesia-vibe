@@ -85,14 +85,6 @@ void        sv_resume(sv_context* ctx);
 
 void        sv_set_playback_rate(sv_context* ctx, float rate);
 
-typedef enum sv_slow_motion
-{
-    SV_SLOW_MOTION_INTERPOLATE = 0,
-    SV_SLOW_MOTION_FRACTIONAL = 1
-} sv_slow_motion;
-
-void        sv_set_slow_motion(sv_context* ctx, sv_slow_motion mode);
-
 const char* sv_last_error(sv_context* ctx);
 void        sv_dump_frame_state(sv_context* ctx, const char* json_path);
 

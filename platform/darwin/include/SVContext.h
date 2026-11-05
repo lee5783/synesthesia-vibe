@@ -24,11 +24,6 @@ typedef NS_ERROR_ENUM(SVErrorDomain, SVErrorCode) {
     SVErrorPermissionDenied = 101
 };
 
-typedef NS_ENUM(NSInteger, SVSlowMotion) {
-    SVSlowMotionInterpolate = 0,
-    SVSlowMotionFractional = 1
-};
-
 typedef struct SVAudioLevels {
     float bass;
     float mid;
@@ -43,7 +38,6 @@ typedef struct SVAudioLevels {
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
 @property (nonatomic, copy, readonly, nullable) NSString *lastErrorMessage;
 @property (nonatomic, assign) float playbackRate;
-@property (nonatomic, assign) SVSlowMotion slowMotion;
 
 - (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;

@@ -74,7 +74,6 @@ namespace
     BOOL _frameRateHintApplied;
     CGFloat _renderScale;
     float _playbackRate;
-    SVSlowMotion _slowMotion;
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
     BOOL _applicationActive;
     BOOL _contextPaused;
@@ -213,7 +212,6 @@ namespace
     _configuration = [[SVContextConfiguration alloc] init];
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
-    _slowMotion = SVSlowMotionInterpolate;
     _applicationActive = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
     self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
     [self configureDrawableLayer];
@@ -273,23 +271,6 @@ namespace
     _playbackRate = normalized;
     self.context.playbackRate = normalized;
     fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
-}
-
-- (SVSlowMotion)slowMotion
-{
-    return _slowMotion;
-}
-
-- (void)setSlowMotion:(SVSlowMotion)slowMotion
-{
-    const SVSlowMotion normalized = SVNormalizedSlowMotion(slowMotion);
-
-    if (normalized == _slowMotion)
-        return;
-
-    _slowMotion = normalized;
-    self.context.slowMotion = normalized;
-    fprintf(stderr, "SVView: slow motion %s\n", normalized == SVSlowMotionFractional ? "fractional" : "interpolate");
 }
 
 - (CGFloat)renderScale
@@ -541,7 +522,6 @@ namespace
 
     self.context = context;
     context.playbackRate = _playbackRate;
-    context.slowMotion = _slowMotion;
     _contextPaused = NO;
 
     if (!_hasPreferredFramesPerSecond)
