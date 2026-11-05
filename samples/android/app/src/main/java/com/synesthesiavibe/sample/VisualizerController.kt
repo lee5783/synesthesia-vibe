@@ -40,7 +40,6 @@ class VisualizerController(
     maxLuminance: Float,
     flashLimit: Float,
     playbackRate: Float,
-    slowMotion: String?,
     private val validatePath: File?,
     private val validateText: String?,
     private val temporaryDirectory: File,
@@ -78,7 +77,6 @@ class VisualizerController(
 
     init {
         setPlaybackRate(playbackRate)
-        setSlowMotion(slowMotion)
     }
     private var surface: GLSurfaceView? = null
     private var liveInput: LiveInput? = null
@@ -132,13 +130,6 @@ class VisualizerController(
     fun setPlaybackRate(rate: Float) {
         renderer.playbackRate = rate
         Log.i(TAG, "playback rate $rate")
-    }
-
-    fun setSlowMotion(mode: String?) {
-        renderer.setSlowMotion(
-            if (mode == "fractional") SynesthesiaContext.SLOW_MOTION_FRACTIONAL else SynesthesiaContext.SLOW_MOTION_INTERPOLATE,
-        )
-        Log.i(TAG, "slow motion ${renderer.slowMotion}")
     }
 
     fun useWav() {

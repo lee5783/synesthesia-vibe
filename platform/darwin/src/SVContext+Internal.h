@@ -13,7 +13,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXTERN NSError *SVMakeError(NSInteger code, NSString *message);
 FOUNDATION_EXTERN float SVNormalizedPlaybackRate(float rate);
-FOUNDATION_EXTERN SVSlowMotion SVNormalizedSlowMotion(SVSlowMotion mode);
 
 @interface SVContext (Internal)
 

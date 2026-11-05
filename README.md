@@ -52,21 +52,7 @@ in the tables below.
   is fixed when the context is created. The cap does not change animation speed.
 - **Playback rate:** `sv_set_playback_rate(ctx, rate)` sets the simulation speed at runtime. The rate is
   clamped to [0.125, 8] and defaults to 1. Interactive contexts advance in fixed 1/60 s steps, so motion
-  looks the same at 30, 60 or 120 fps. Below 1× the view blends the last two simulation steps on every
-  display frame, so motion stays smooth instead of holding. The blend always shows the image one
-  simulation step behind the simulation, about half a step later on average than holding frames would.
-  After context creation, a resize, a preset load, a drop below 1× or a switch from fractional mode it
-  holds one step before blending starts. Deterministic (capture) contexts ignore it.
-- **Slow-motion mode:** `sv_set_slow_motion(ctx, mode)` chooses how rates below 1× are drawn. The default,
-  `SV_SLOW_MOTION_INTERPOLATE`, blends steps as described above and costs about `rate` of a full pass per
-  display frame. `SV_SLOW_MOTION_FRACTIONAL` runs a fraction of a simulation step on every display frame
-  instead, with zoom, rotation, motion, decay and shape and wave opacity scaled to the fraction and 16-bit
-  feedback buffers. It costs a full pass per display frame, the same as 1×. It is approximate: preset
-  equations that accumulate state from frame to frame, and presets that count frames, run faster; trails
-  in presets with a warp shader fade sooner; and opaque moving lines smear into brighter bands than at 1×.
-  Where the GPU cannot render to 16-bit buffers it falls back to 8-bit ones, and dim trails can then stop
-  fading. Presets see `fps` as 60 divided by the fraction in this mode. The mode can change at runtime, any other value means interpolate, and deterministic contexts
-  ignore it.
+  looks the same at 30, 60 or 120 fps. Below 1× frames hold. Deterministic (capture) contexts ignore it.
 - **Luminance and flash limit:** `sv_config.max_luminance` (0 = off, otherwise a soft ceiling in (0, 1])
   and `sv_config.flash_limit` (0 = off, otherwise the largest rise in mean luminance per second). Both are
   off by default, fixed at creation and only ever darken the image. The flash limit is measured in
@@ -82,13 +68,11 @@ in the tables below.
 |---|---|---|---|
 | Frame-rate cap | `SVContextConfiguration.maxFps` | `Builder.setMaxFps` | `config.maxFps` |
 | Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
-| Slow-motion mode | `SVContext.slowMotion`, `SVView.slowMotion` (`SVSlowMotionInterpolate`, `SVSlowMotionFractional`) | `SynesthesiaContext.setSlowMotion`, `SynesthesiaRenderer.setSlowMotion` (`SLOW_MOTION_INTERPOLATE`, `SLOW_MOTION_FRACTIONAL`) | `SynesthesiaContext.setSlowMotion`, `SynesthesiaCanvas.setSlowMotion` (`SlowMotion.INTERPOLATE`, `SlowMotion.FRACTIONAL`) |
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
 | Validation | `+[SVContext validatePresetAtURL:error:]`, `+validatePresetText:error:` (Swift `validatePreset(at:)`, `validatePreset(text:)`) | `SynesthesiaContext.validatePreset(File)`, `validatePresetText(String[, File])` | `SynesthesiaContext.validatePreset(module, path)`, `validatePresetText(module, text)` |
 
-- **Android:** `SynesthesiaRenderer.setPlaybackRate` and `SynesthesiaRenderer.setSlowMotion` can be called
-  from any thread; the renderer applies them on the GL thread before the next frame and again after the
-  surface is recreated. `validatePresetText` writes the text to a temporary file in
+- **Android:** `SynesthesiaRenderer.setPlaybackRate` can be called from any thread; the renderer applies
+  it on the GL thread before the next frame. `validatePresetText` writes the text to a temporary file in
   the directory you pass (for example `Context.getCacheDir()`), or in `java.io.tmpdir`, and throws
   `SV_ERR_IO` if it cannot.
 

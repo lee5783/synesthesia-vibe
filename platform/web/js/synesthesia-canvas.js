@@ -6,7 +6,6 @@
 //
 
 import { ResourceLoader } from "./resource-loader.js";
-import { SlowMotion } from "./slow-motion.js";
 import { SynesthesiaContext } from "./synesthesia-context.js";
 import { SynesthesiaError } from "./synesthesia-error.js";
 import { createWebGl2Context, makeWebGlContextCurrent, registerWebGlContext, releaseWebGlContext } from "./webgl-context.js";
@@ -37,7 +36,6 @@ export class SynesthesiaCanvas {
     #nextDeadlineMs = 0;
     #paused = false;
     #playbackRate = DEFAULT_PLAYBACK_RATE;
-    #slowMotion = SlowMotion.INTERPOLATE;
     #hidden = false;
     #lost = false;
     #closed = false;
@@ -97,17 +95,6 @@ export class SynesthesiaCanvas {
 
         if (this.#context !== null)
             this.#context.setPlaybackRate(rate);
-    }
-
-    get slowMotion() {
-        return this.#slowMotion;
-    }
-
-    setSlowMotion(mode) {
-        this.#slowMotion = mode === SlowMotion.FRACTIONAL ? SlowMotion.FRACTIONAL : SlowMotion.INTERPOLATE;
-
-        if (this.#context !== null)
-            this.#context.setSlowMotion(this.#slowMotion);
     }
 
     get isContextLost() {
@@ -172,7 +159,6 @@ export class SynesthesiaCanvas {
             context.pause();
 
         context.setPlaybackRate(this.#playbackRate);
-        context.setSlowMotion(this.#slowMotion);
         this.#context = context;
         this.#lastFrameMs = 0;
 

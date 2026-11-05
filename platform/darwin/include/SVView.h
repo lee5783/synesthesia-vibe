@@ -45,7 +45,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) float preferredFramesPerSecond;
 @property (nonatomic, assign) CGFloat renderScale;
 @property (nonatomic, assign) float playbackRate;
-@property (nonatomic, assign) SVSlowMotion slowMotion;
 
 - (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block;
 - (void)snapshotWithCompletion:(void (^)(CGImageRef _Nullable image))completion;

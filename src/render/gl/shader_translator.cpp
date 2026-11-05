@@ -342,23 +342,6 @@ std::string PrefixGlobalUniforms(const std::string& glsl)
     return output;
 }
 
-std::string ClampFragmentOutput(const std::string& glsl)
-{
-    const std::string assignment = "rast_FragData[0] = ";
-    const size_t start = glsl.rfind(assignment);
-
-    if (start == std::string::npos)
-        return glsl;
-
-    const size_t valueStart = start + assignment.size();
-    const size_t valueEnd = glsl.find(';', valueStart);
-
-    if (valueEnd == std::string::npos)
-        return glsl;
-
-    return glsl.substr(0, valueStart) + "clamp(" + glsl.substr(valueStart, valueEnd - valueStart) + ", 0.0, 1.0)" + glsl.substr(valueEnd);
-}
-
 bool IsFrameBufferSampler(const std::string& name)
 {
     static const char* const kNames[] = {
@@ -630,10 +613,6 @@ TranslatedShader TranslatePresetShaderFor(GlslTarget target, PresetShaderStage s
     result.ok = true;
     const std::string generated = PrefixGlobalUniforms(generator.GetResult());
     result.glsl = FlipFrameBufferLookups(target == GlslTarget::Es300 ? CompleteEsPrecisionBlock(generated) : generated);
-
-    if (stage == PresetShaderStage::Warp)
-        result.glsl = ClampFragmentOutput(result.glsl);
-
     return result;
 }
 

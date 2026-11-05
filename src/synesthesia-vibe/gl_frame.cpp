@@ -53,19 +53,6 @@ namespace
         BdGlSetPixelCenterOffset(gl, enabled, ctx->texsizeX, ctx->texsizeY);
     }
 
-    void BdGlScaleWarpTexelResidual(sv_context* ctx)
-    {
-        const float residualScale = 1.0f - ctx->stepFraction;
-        const float du = residualScale * (0.5f - 0.5f * kPixelCenterOffsetSignX) / static_cast<float>(ctx->texsizeX);
-        const float dv = residualScale * (0.5f + 0.5f * kPixelCenterOffsetSignY) / static_cast<float>(ctx->texsizeY);
-
-        for (render_core::Vertex& vert : ctx->meshVerts)
-        {
-            vert.tu -= du;
-            vert.tv -= dv;
-        }
-    }
-
     void BdGlStageMotionVectors(sv_context* ctx, BdGlPipeline* gl)
     {
         render_gl::MotionVectorsInput input;
@@ -74,7 +61,6 @@ namespace
         input.gridX = ctx->nGridX;
         input.gridY = ctx->nGridY;
         input.texSizeX = ctx->texsizeX;
-        input.stepFraction = ctx->stepFraction;
 
         gl->targets.Source().Bind();
 
@@ -146,12 +132,8 @@ namespace
         input.texSizeY = ctx->texsizeY;
         input.gridX = ctx->nGridX;
         input.gridY = ctx->nGridY;
-        input.stepFraction = ctx->stepFraction;
 
         render_core::ComputeGridAlphaValues(input, ctx->meshVerts.data(), ctx->meshVertInfo.data());
-
-        if (ctx->stepFraction != 1.0f)
-            BdGlScaleWarpTexelResidual(ctx);
 
         render_gl::WarpBlitInput blit;
         blit.verts = ctx->meshVerts.data();
@@ -161,7 +143,6 @@ namespace
         blit.wrap = *ctx->state->var_pf_wrap > ctx->snapPoint;
         blit.texSizeX = ctx->texsizeX;
         blit.texSizeY = ctx->texsizeY;
-        blit.stepFraction = ctx->stepFraction;
 
         if (gl->warpShaderActive)
         {
@@ -238,7 +219,6 @@ namespace
         input.aspectY = ctx->aspectY;
         input.texSizeX = ctx->texsizeX;
         input.texSizeY = ctx->texsizeY;
-        input.stepFraction = ctx->stepFraction;
 
         BdGlSetPixelCenterOffset(ctx, gl, true);
         render_gl::DrawCustomShapes(input, gl->texturedProgram, gl->untexturedProgram, gl->quadMesh,
@@ -260,7 +240,6 @@ namespace
         input.invAspectY = ctx->invAspectY;
         input.texSizeX = ctx->texsizeX;
         input.texSizeY = ctx->texsizeY;
-        input.stepFraction = ctx->stepFraction;
 
         BdGlSetPixelCenterOffset(ctx, gl, true);
         render_gl::DrawCustomWaves(input, gl->untexturedProgram, gl->quadMesh);
@@ -278,7 +257,6 @@ namespace
         input.aspectY = ctx->aspectY;
         input.texSizeX = ctx->texsizeX;
         input.texSizeY = ctx->texsizeY;
-        input.stepFraction = ctx->stepFraction;
 
         BdGlSetPixelCenterOffset(ctx, gl, true);
         render_gl::DrawWave(input, ctx->mysound.fWave[0], ctx->mysound.fWave[1], gl->untexturedProgram, gl->quadMesh);
@@ -292,7 +270,6 @@ namespace
         input.state = ctx->state;
         input.screenDependentRenderMode = kBeatdropScreenDependentRenderMode;
         input.aspectY = ctx->aspectY;
-        input.stepFraction = ctx->stepFraction;
 
         BdGlSetPixelCenterOffset(ctx, gl, true);
         render_gl::DrawDarkenCenter(input, gl->untexturedProgram, gl->quadMesh);
@@ -351,18 +328,6 @@ namespace
         BdGlSetPixelCenterOffset(gl, false, ctx->width, ctx->height);
     }
 
-    render_gl::LuminanceLimiterInput BdGlLimiterInput(sv_context* ctx, float presentedTime)
-    {
-        const float dt = std::min(std::max(presentedTime - ctx->limiterLastTime, 0.0f), 0.25f);
-        ctx->limiterLastTime = presentedTime;
-
-        render_gl::LuminanceLimiterInput input;
-        input.maxLuminance = ctx->config.max_luminance;
-        input.flashLimit = ctx->config.flash_limit;
-        input.dtSeconds = dt;
-        return input;
-    }
-
     void BdGlCompositeToTarget(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
         render_gl::Texture& noShaderSource)
     {
@@ -372,31 +337,18 @@ namespace
             return;
         }
 
-        const render_gl::LuminanceLimiterInput input = BdGlLimiterInput(ctx, static_cast<float>(ctx->timeModel.GetTime()));
+        const float time = static_cast<float>(ctx->timeModel.GetTime());
+        const float dt = std::min(std::max(time - ctx->limiterLastTime, 0.0f), 0.25f);
+        ctx->limiterLastTime = time;
 
         BdGlStageComposite(ctx, gl, gl->limiter.SceneFramebufferId(), compSource, noShaderSource);
 
+        render_gl::LuminanceLimiterInput input;
+        input.maxLuminance = ctx->config.max_luminance;
+        input.flashLimit = ctx->config.flash_limit;
+        input.dtSeconds = dt;
+
         gl->limiter.Apply(input, targetFbo);
-    }
-
-    bool BdGlEnsureInterpolator(sv_context* ctx, BdGlPipeline* gl)
-    {
-        if (gl->interpolator.Valid())
-            return true;
-
-        if (gl->interpolatorFailed)
-            return false;
-
-        if (gl->interpolator.Create(ctx->width, ctx->height))
-        {
-            fprintf(stderr, "synesthesia-vibe: frame interpolator ready size=%dx%d\n", ctx->width, ctx->height);
-            return true;
-        }
-
-        gl->interpolator.Destroy();
-        gl->interpolatorFailed = true;
-        fprintf(stderr, "synesthesia-vibe: frame interpolator unavailable, frames hold below 1x\n");
-        return false;
     }
 
     void BdGlUploadAudio(BdGlPipeline* gl, sv_context* ctx)
@@ -483,46 +435,4 @@ void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo)
     gl->presentBlurTexUsed = gl->highestBlurTexUsed;
 
     gl->glErrorCount += render_gl::DrainGlErrors("BdGlPresentFrame");
-}
-
-void BdGlPresentInterpolatedFrame(sv_context* ctx, uint32_t targetFbo, bool stepped, bool restart, float alpha)
-{
-    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
-    if (gl == nullptr)
-        return;
-
-    if (!BdGlEnsureInterpolator(ctx, gl))
-    {
-        BdGlPresentFrame(ctx, targetFbo);
-        return;
-    }
-
-    render_gl::SetDefaultDrawState();
-
-    if (restart)
-        gl->interpolator.ResetHistory();
-
-    if (stepped || !gl->interpolator.HasHistory())
-    {
-        BdGlStageComposite(ctx, gl, gl->interpolator.CaptureFramebufferId(), gl->targets.Dest().ColorTexture(),
-            gl->targets.Source().ColorTexture());
-        gl->interpolator.CommitCapture();
-        gl->presentBlurTexUsed = gl->highestBlurTexUsed;
-    }
-
-    if (!gl->limiterEnabled)
-    {
-        gl->interpolator.Blend(alpha, targetFbo);
-    }
-    else
-    {
-        const float time = static_cast<float>(ctx->timeModel.GetTime());
-        const float lag = gl->interpolator.HasPrevious() ? (1.0f - alpha) * static_cast<float>(kBeatdropSimulationStepSeconds) : 0.0f;
-        const render_gl::LuminanceLimiterInput input = BdGlLimiterInput(ctx, time - lag);
-
-        gl->interpolator.Blend(alpha, gl->limiter.SceneFramebufferId());
-        gl->limiter.Apply(input, targetFbo);
-    }
-
-    gl->glErrorCount += render_gl::DrainGlErrors("BdGlPresentInterpolatedFrame");
 }

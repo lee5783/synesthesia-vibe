@@ -5,7 +5,7 @@
 //  Created by lee5783 on 2026-10-12.
 //
 
-import { AudioInput, ResourceLoader, SlowMotion, SynesthesiaCanvas, SynesthesiaContext, SynesthesiaError, WavFeeder, loadSynesthesiaModule } from "synesthesia-vibe";
+import { AudioInput, ResourceLoader, SynesthesiaCanvas, SynesthesiaContext, SynesthesiaError, WavFeeder, loadSynesthesiaModule } from "synesthesia-vibe";
 import { runCapture } from "./capture.js";
 
 const MANIFEST_URL = "resources/manifest.json";
@@ -33,14 +33,12 @@ class SampleApp {
     #loadFailed = false;
     #switching = Promise.resolve();
     #playbackRate = 1;
-    #slowMotion = SlowMotion.INTERPOLATE;
     #validatePath = null;
 
-    constructor(elements, configuration, playbackRate = 1, slowMotion = SlowMotion.INTERPOLATE, validatePath = null) {
+    constructor(elements, configuration, playbackRate = 1, validatePath = null) {
         this.#elements = elements;
         this.#configuration = configuration;
         this.#playbackRate = playbackRate;
-        this.#slowMotion = slowMotion;
         this.#validatePath = validatePath;
     }
 
@@ -64,8 +62,6 @@ class SampleApp {
             });
             this.#view.setPlaybackRate(this.#playbackRate);
             console.info("playback rate: " + this.#view.playbackRate);
-            this.#view.setSlowMotion(this.#slowMotion);
-            console.info("slow motion: " + this.#view.slowMotion);
             this.#validateRequested();
             this.#populatePresets();
             this.#populateSources();
@@ -437,7 +433,7 @@ if (parameters.has("capture")) {
     elements.capturePanel.hidden = false;
     runCapture(parameters, elements);
 } else {
-    const app = new SampleApp(elements, numericParameters(parameters, CONFIGURATION_PARAMETERS), numericParameters(parameters, ["playbackRate"]).playbackRate ?? 1, parameters.get("slowMotion") === "fractional" ? SlowMotion.FRACTIONAL : SlowMotion.INTERPOLATE, parameters.get("validate"));
+    const app = new SampleApp(elements, numericParameters(parameters, CONFIGURATION_PARAMETERS), numericParameters(parameters, ["playbackRate"]).playbackRate ?? 1, parameters.get("validate"));
     window.addEventListener("error", event => app.showError(event.error ?? event.message));
     window.addEventListener("unhandledrejection", event => app.showError(event.reason));
     app.run();

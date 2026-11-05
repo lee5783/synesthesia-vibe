@@ -300,11 +300,6 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_playback_rate(sv_context* ctx, f
     sv_set_playback_rate(ctx, rate);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_slow_motion(sv_context* ctx, int mode)
-{
-    sv_set_slow_motion(ctx, mode == SV_SLOW_MOTION_FRACTIONAL ? SV_SLOW_MOTION_FRACTIONAL : SV_SLOW_MOTION_INTERPOLATE);
-}
-
 extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_last_error(sv_context* ctx)
 {
     const char* error = sv_last_error(ctx);

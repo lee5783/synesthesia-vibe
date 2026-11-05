@@ -20,9 +20,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class SynesthesiaContext implements AutoCloseable {
 
-    public static final int SLOW_MOTION_INTERPOLATE = 0;
-    public static final int SLOW_MOTION_FRACTIONAL = 1;
-
     private static final String RENDERER_UNAVAILABLE_PREFIX = "renderer unavailable";
     private static final String VALIDATE_TEMP_PREFIX = "sv-validate-";
     private static final String VALIDATE_TEMP_SUFFIX = ".milk";
@@ -219,19 +216,6 @@ public final class SynesthesiaContext implements AutoCloseable {
         }
     }
 
-    public void setSlowMotion(int mode) {
-        lock.readLock().lock();
-        try {
-            nativeSetSlowMotion(requireHandle(), normalizeSlowMotion(mode));
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    static int normalizeSlowMotion(int mode) {
-        return mode == SLOW_MOTION_FRACTIONAL ? SLOW_MOTION_FRACTIONAL : SLOW_MOTION_INTERPOLATE;
-    }
-
     public AudioLevels audioLevels() {
         float[] levels = new float[3];
         lock.readLock().lock();
@@ -396,8 +380,6 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native void nativeResume(long handle);
 
     private static native void nativeSetPlaybackRate(long handle, float rate);
-
-    private static native void nativeSetSlowMotion(long handle, int mode);
 
     private static native byte[] nativeLastError(long handle);
 
