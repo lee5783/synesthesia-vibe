@@ -13,6 +13,13 @@
 namespace render_gl
 {
 
+namespace
+{
+
+unsigned int g_drainedErrorTotal = 0;
+
+}
+
 const char* GlErrorName(unsigned int error)
 {
     switch (error)
@@ -40,10 +47,16 @@ int DrainGlErrors(const char* szCallSite)
             break;
 
         ++count;
+        ++g_drainedErrorTotal;
         fprintf(stderr, "render_gl: GL error 0x%04X (%s) at %s\n", error, GlErrorName(error), szSite);
     }
 
     return count;
+}
+
+unsigned int DrainedGlErrorTotal()
+{
+    return g_drainedErrorTotal;
 }
 
 bool CheckGlError(const char* szCallSite)

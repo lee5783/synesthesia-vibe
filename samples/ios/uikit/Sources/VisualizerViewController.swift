@@ -17,12 +17,14 @@ final class VisualizerViewController: UIViewController {
     }
 
     private static let cellIdentifier = "PresetCell"
+    private static let debugIntervals: [Float] = [0.5, 1, 2]
 
     private let library: PresetLibrary
     private let player: SynesthesiaPlayer
     private let visualizerView = SVView(frame: .zero)
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let statusLabel = UILabel()
+    private let debugLabel = UILabel()
     private var audioSource = AudioSource.wav
     private var cancellables: Set<AnyCancellable> = []
 
@@ -58,6 +60,13 @@ final class VisualizerViewController: UIViewController {
         statusLabel.shadowColor = .black
         view.addSubview(statusLabel)
 
+        debugLabel.textColor = .white
+        debugLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        debugLabel.numberOfLines = 0
+        debugLabel.shadowColor = .black
+        debugLabel.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        view.addSubview(debugLabel)
+
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: Self.cellIdentifier)
@@ -80,6 +89,9 @@ final class VisualizerViewController: UIViewController {
         tableView.frame = listFrame
         let statusHeight = statusLabel.font.lineHeight * 2
         statusLabel.frame = CGRect(x: visualizerFrame.minX + 8, y: visualizerFrame.maxY - statusHeight - 6, width: visualizerFrame.width - 16, height: statusHeight)
+        let debugWidth = visualizerFrame.width - 16
+        let debugHeight = debugLabel.sizeThatFits(CGSize(width: debugWidth, height: .greatestFiniteMagnitude)).height
+        debugLabel.frame = CGRect(x: visualizerFrame.minX + 8, y: visualizerFrame.minY + 6, width: debugWidth, height: debugHeight)
     }
 
     private func observePlayer() {
@@ -89,13 +101,39 @@ final class VisualizerViewController: UIViewController {
                 self?.statusLabel.text = [name, error?.localizedDescription].compactMap { $0 }.joined(separator: "\n")
             }
             .store(in: &cancellables)
+        player.$debugInfo
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] info in
+                self?.debugLabel.text = info.map(Self.debugSummary(of:))
+                self?.view.setNeedsLayout()
+            }
+            .store(in: &cancellables)
+    }
+
+    private static func debugSummary(of info: [String: Any]) -> String {
+        func number(_ key: String) -> Double { (info[key] as? NSNumber)?.doubleValue ?? 0 }
+        func integer(_ key: String) -> Int { (info[key] as? NSNumber)?.intValue ?? 0 }
+        func text(_ key: String) -> String { info[key] as? String ?? "" }
+        return [
+            String(format: "time %.2f  frame %d", number("time"), integer("frame")),
+            String(format: "fps %.1f  steps %.2f  rate %.2f", number("display_fps"), number("sim_steps_per_frame"), number("playback_rate")),
+            String(format: "ver %d  warp %d  comp %d  limiter %d", integer("preset_version"), integer("warp_shader"), integer("comp_shader"), integer("limiter_active")),
+            String(format: "bass %.2f  mid %.2f  treb %.2f", number("bass"), number("mid"), number("treb")),
+            String(format: "att %.2f / %.2f / %.2f", number("bass_att"), number("mid_att"), number("treb_att")),
+            String(format: "tex %dx%d  view %dx%d  fb %d  gl_err %d", integer("texsize_x"), integer("texsize_y"), integer("width"), integer("height"), integer("feedback_format"), integer("gl_errors")),
+            "preset: \(text("preset_name"))",
+            "error: \(text("last_error"))"
+        ].joined(separator: "\n")
     }
 
     private func updateBarButtons() {
         let sourceTitle = audioSource == .wav ? "Mic" : "WAV"
         let pauseTitle = player.isPaused ? "Play" : "Pause"
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: sourceTitle, style: .plain, target: self, action: #selector(toggleAudioSource))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: pauseTitle, style: .plain, target: self, action: #selector(togglePause))
+        let pauseItem = UIBarButtonItem(title: pauseTitle, style: .plain, target: self, action: #selector(togglePause))
+        let debugItem = UIBarButtonItem(title: player.debugEnabled ? "Debug on" : "Debug off", style: .plain, target: self, action: #selector(toggleDebug))
+        let intervalItem = UIBarButtonItem(title: String(format: "%g s", player.debugInterval), style: .plain, target: self, action: #selector(cycleDebugInterval))
+        navigationItem.rightBarButtonItems = [pauseItem, debugItem, intervalItem]
     }
 
     private func startWav() {
@@ -132,6 +170,18 @@ final class VisualizerViewController: UIViewController {
         case .wav: startMicrophone()
         case .microphone: startWav()
         }
+        updateBarButtons()
+    }
+
+    @objc private func toggleDebug() {
+        player.debugEnabled.toggle()
+        updateBarButtons()
+    }
+
+    @objc private func cycleDebugInterval() {
+        let intervals = Self.debugIntervals
+        let next = (intervals.firstIndex(of: player.debugInterval) ?? -1) + 1
+        player.debugInterval = intervals[next % intervals.count]
         updateBarButtons()
     }
 

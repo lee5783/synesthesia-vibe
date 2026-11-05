@@ -38,6 +38,9 @@ typedef struct SVAudioLevels {
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
 @property (nonatomic, copy, readonly, nullable) NSString *lastErrorMessage;
 @property (nonatomic, assign) float playbackRate;
+@property (nonatomic, copy, nullable) void (^debugInfoHandler)(NSDictionary<NSString *, id> *info);
+@property (nonatomic, assign) float debugInterval;
+@property (nonatomic, assign) BOOL debugEnabled;
 
 - (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;

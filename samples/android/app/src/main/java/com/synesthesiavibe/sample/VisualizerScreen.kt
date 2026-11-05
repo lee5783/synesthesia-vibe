@@ -31,6 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,7 +71,26 @@ fun VisualizerScreen(
                     .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
+            controller.debugInfo?.let { info ->
+                Text(
+                    text = debugLines(info).joinToString("\n"),
+                    color = Color.White,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), MaterialTheme.shapes.small)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
         }
+        DebugControls(
+            enabled = controller.debugEnabled,
+            interval = controller.debugInterval,
+            onToggle = controller::enableDebug,
+            onCycleInterval = controller::cycleDebugInterval,
+        )
         SourceSelector(
             selected = controller.audioSource,
             showsSystemAudio = showsSystemAudio,
@@ -112,6 +132,48 @@ private fun VisualizerSurface(controller: VisualizerController, modifier: Modifi
         modifier = modifier,
         factory = { context -> GLSurfaceView(context).also(controller::attach) },
     )
+}
+
+@Composable
+private fun DebugControls(
+    enabled: Boolean,
+    interval: Float,
+    onToggle: (Boolean) -> Unit,
+    onCycleInterval: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        FilterChip(
+            selected = enabled,
+            onClick = { onToggle(!enabled) },
+            label = { Text("Debug info") },
+        )
+        FilterChip(
+            selected = false,
+            onClick = onCycleInterval,
+            label = { Text("Every ${interval}s") },
+        )
+    }
+}
+
+private fun debugLines(info: Map<String, Any?>): List<String> = listOf(
+    "time=${info["time"].asText()} frame=${info["frame"]}",
+    "fps=${info["display_fps"].asText()} steps/frame=${info["sim_steps_per_frame"].asText()} rate=${info["playback_rate"].asText()}",
+    "preset=${info["preset_name"]} v${info["preset_version"]}",
+    "warp=${info["warp_shader"]} comp=${info["comp_shader"]} limiter=${info["limiter_active"]}",
+    "bass=${info["bass"].asText()} mid=${info["mid"].asText()} treb=${info["treb"].asText()}",
+    "att=${info["bass_att"].asText()} ${info["mid_att"].asText()} ${info["treb_att"].asText()}",
+    "tex=${info["texsize_x"]}x${info["texsize_y"]} view=${info["width"]}x${info["height"]} fb=${info["feedback_format"]}",
+    "gl_errors=${info["gl_errors"]} last_error=${info["last_error"]}",
+)
+
+private fun Any?.asText(): String = when (this) {
+    is Number -> "%.2f".format(toDouble())
+    else -> toString()
 }
 
 @Composable

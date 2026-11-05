@@ -24,6 +24,7 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     private static final float MIN_MAX_FPS = 1.0f;
     private static final long DEADLINE_TOLERANCE_DIVISOR = 5;
     private static final float DEFAULT_PLAYBACK_RATE = 1.0f;
+    private static final float DEFAULT_DEBUG_INTERVAL = 1.0f;
 
     public interface Listener {
         void onContextCreated(SynesthesiaContext context);
@@ -38,6 +39,10 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     private volatile boolean paused;
     private volatile float playbackRate = DEFAULT_PLAYBACK_RATE;
     private float appliedPlaybackRate = DEFAULT_PLAYBACK_RATE;
+    private volatile SynesthesiaContext.DebugListener debugListener;
+    private volatile float debugInterval = DEFAULT_DEBUG_INTERVAL;
+    private SynesthesiaContext.DebugListener appliedDebugListener;
+    private float appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
     private long lastFrameNanos;
     private long nextDeadlineNanos;
 
@@ -71,6 +76,10 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             created.setPlaybackRate(appliedPlaybackRate);
             logPlaybackRate(appliedPlaybackRate);
 
+            appliedDebugListener = null;
+            appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
+            applyDebug(created);
+
             lastFrameNanos = 0;
             nextDeadlineNanos = 0;
             context = created;
@@ -99,6 +108,7 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             return;
 
         applyPlaybackRate(current);
+        applyDebug(current);
 
         if (frameIntervalNanos > 0 && !paused)
             waitForDeadline();
@@ -118,6 +128,22 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     public void setPlaybackRate(float rate) {
         playbackRate = rate;
+    }
+
+    public SynesthesiaContext.DebugListener getDebugListener() {
+        return debugListener;
+    }
+
+    public void setDebugListener(SynesthesiaContext.DebugListener listener) {
+        debugListener = listener;
+    }
+
+    public float getDebugInterval() {
+        return debugInterval;
+    }
+
+    public void setDebugInterval(float seconds) {
+        debugInterval = seconds;
     }
 
     public void pause() {
@@ -163,6 +189,21 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         appliedPlaybackRate = rate;
         current.setPlaybackRate(rate);
         logPlaybackRate(rate);
+    }
+
+    private void applyDebug(SynesthesiaContext current) {
+        SynesthesiaContext.DebugListener listener = debugListener;
+        float interval = debugInterval;
+
+        if (Float.compare(interval, appliedDebugInterval) != 0) {
+            appliedDebugInterval = interval;
+            current.setDebugInterval(interval);
+        }
+
+        if (listener != appliedDebugListener) {
+            appliedDebugListener = listener;
+            current.setDebugListener(listener);
+        }
     }
 
     private static void logPlaybackRate(float rate) {

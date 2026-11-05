@@ -74,6 +74,9 @@ namespace
     BOOL _frameRateHintApplied;
     CGFloat _renderScale;
     float _playbackRate;
+    float _debugInterval;
+    BOOL _debugEnabled;
+    void (^_debugInfoHandler)(NSDictionary<NSString *, id> *);
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
     BOOL _applicationActive;
     BOOL _contextPaused;
@@ -212,6 +215,7 @@ namespace
     _configuration = [[SVContextConfiguration alloc] init];
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
+    _debugInterval = 1.0f;
     _applicationActive = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
     self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
     [self configureDrawableLayer];
@@ -271,6 +275,39 @@ namespace
     _playbackRate = normalized;
     self.context.playbackRate = normalized;
     fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
+}
+
+- (void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    return _debugInfoHandler;
+}
+
+- (void)setDebugInfoHandler:(void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    _debugInfoHandler = [debugInfoHandler copy];
+    self.context.debugInfoHandler = _debugInfoHandler;
+}
+
+- (float)debugInterval
+{
+    return _debugInterval;
+}
+
+- (void)setDebugInterval:(float)debugInterval
+{
+    _debugInterval = debugInterval;
+    self.context.debugInterval = debugInterval;
+}
+
+- (BOOL)debugEnabled
+{
+    return _debugEnabled;
+}
+
+- (void)setDebugEnabled:(BOOL)debugEnabled
+{
+    _debugEnabled = debugEnabled;
+    self.context.debugEnabled = debugEnabled;
 }
 
 - (CGFloat)renderScale
@@ -522,6 +559,9 @@ namespace
 
     self.context = context;
     context.playbackRate = _playbackRate;
+    context.debugInterval = _debugInterval;
+    context.debugInfoHandler = _debugInfoHandler;
+    context.debugEnabled = _debugEnabled;
     _contextPaused = NO;
 
     if (!_hasPreferredFramesPerSecond)

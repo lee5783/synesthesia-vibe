@@ -11,6 +11,7 @@ import { runCapture } from "./capture.js";
 const MANIFEST_URL = "resources/manifest.json";
 const PRESET_BLEND_SECONDS = 2;
 const METER_FULL_SCALE = 3;
+const DEBUG_INTERVAL_DEFAULT = 1;
 const CUSTOM_PRESET_VALUE = "custom";
 const CONFIGURATION_PARAMETERS = Object.freeze(["maxFps", "maxLuminance", "flashLimit"]);
 const PRESET_SECTION = /^\s*\[preset\d+\]\s*$/im;
@@ -34,6 +35,10 @@ class SampleApp {
     #switching = Promise.resolve();
     #playbackRate = 1;
     #validatePath = null;
+    #debugEnabled = false;
+    #debugInterval = DEBUG_INTERVAL_DEFAULT;
+    #debugReports = 0;
+    #debugLastReportMs = 0;
 
     constructor(elements, configuration, playbackRate = 1, validatePath = null) {
         this.#elements = elements;
@@ -61,6 +66,7 @@ class SampleApp {
                 onBeforeRender: (context, deltaSeconds) => this.#wavFeeder?.feed(context, deltaSeconds)
             });
             this.#view.setPlaybackRate(this.#playbackRate);
+            this.#view.setDebugInterval(this.#debugInterval);
             console.info("playback rate: " + this.#view.playbackRate);
             this.#validateRequested();
             this.#populatePresets();
@@ -99,6 +105,8 @@ class SampleApp {
         elements.sourceSelect.addEventListener("change", () => this.#selectSource(elements.sourceSelect.value));
         elements.audioFileInput.addEventListener("change", () => this.#playAudioFile(elements.audioFileInput));
         elements.fullscreenButton.addEventListener("click", () => this.#toggleFullscreen());
+        elements.debugToggle.addEventListener("click", () => this.#toggleDebug());
+        elements.debugInterval.addEventListener("change", () => this.#changeDebugInterval(Number(elements.debugInterval.value)));
         elements.errorDismiss.addEventListener("click", () => this.hideError());
         document.addEventListener("keydown", event => this.#handleKey(event));
         document.addEventListener("fullscreenchange", () => {
@@ -356,6 +364,45 @@ class SampleApp {
         request.catch(error => this.showError(new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "fullscreen unavailable: " + error.message)));
     }
 
+    #toggleDebug() {
+        if (this.#view === null)
+            return;
+
+        this.#debugEnabled = !this.#debugEnabled;
+        this.#debugReports = 0;
+        this.#debugLastReportMs = 0;
+        const { debugToggle, debugInfo } = this.#elements;
+        debugToggle.textContent = "Debug info: " + (this.#debugEnabled ? "on" : "off");
+        debugToggle.setAttribute("aria-pressed", String(this.#debugEnabled));
+        debugInfo.hidden = !this.#debugEnabled;
+        debugInfo.textContent = "waiting for the first report (" + this.#debugInterval + " s)";
+        this.#view.onDebugInfo = this.#debugEnabled ? info => this.#showDebugInfo(info) : null;
+        console.info("debug info: " + (this.#debugEnabled ? "on" : "off"));
+    }
+
+    #changeDebugInterval(seconds) {
+        if (this.#view === null)
+            return;
+
+        this.#debugInterval = seconds;
+        this.#view.setDebugInterval(seconds);
+        console.info("debug interval: " + seconds + " s");
+    }
+
+    #showDebugInfo(info) {
+        const now = performance.now();
+        const gap = this.#debugLastReportMs !== 0 ? ((now - this.#debugLastReportMs) / 1000).toFixed(2) + " s" : "first";
+        this.#debugLastReportMs = now;
+        this.#debugReports += 1;
+        const lines = ["report #" + this.#debugReports + "  (" + gap + " since the previous)"];
+
+        for (const [key, value] of Object.entries(info))
+            lines.push(key.padEnd(20) + formatDebugValue(value));
+
+        this.#elements.debugInfo.textContent = lines.join("\n");
+        console.info("debug info #" + this.#debugReports + " gap=" + gap + " " + JSON.stringify(info));
+    }
+
     #updateStatus() {
         const source = this.#source === "file"
             ? "file " + (this.#elements.audioPlayer.dataset.name ?? "")
@@ -380,6 +427,13 @@ class SampleApp {
 
 function presetName(path) {
     return path.split("/").pop().replace(/\.milk$/i, "");
+}
+
+function formatDebugValue(value) {
+    if (typeof value === "number" && !Number.isInteger(value))
+        return value.toFixed(3);
+
+    return value === "" ? "(empty)" : String(value);
 }
 
 function setMeter({ bar, value }, level) {
@@ -410,6 +464,9 @@ function elementsById() {
         audioPlayer: byId("audio-player"),
         fullscreenButton: byId("fullscreen-button"),
         statusLine: byId("status-line"),
+        debugToggle: byId("debug-toggle"),
+        debugInterval: byId("debug-interval"),
+        debugInfo: byId("debug-info"),
         capturePanel: byId("capture-panel"),
         captureStatus: byId("capture-status"),
         captureFiles: byId("capture-files"),

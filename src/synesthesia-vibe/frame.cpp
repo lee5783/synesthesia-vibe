@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "equation_drivers.h"
+#include "gl_error.h"
 #include "parser_win32.h"
 #include "rng_compat.h"
 
@@ -489,11 +490,87 @@ namespace
 
         BdGlPresentFrame(ctx, target_fbo);
     }
+
+    void BdRestartDebugWindow(sv_context* ctx, double now)
+    {
+        ctx->debugWindowPending = false;
+        ctx->debugWindowStart = now;
+        ctx->debugWindowCalls = 0;
+        ctx->debugWindowFrame = ctx->frame;
+    }
+
+    void BdEmitDebugInfo(sv_context* ctx, double elapsed)
+    {
+        const sv_debug_fn fn = ctx->debugFn;
+        void* const user = ctx->debugUser;
+        const BdGlPipeline* gl = ctx->gl;
+
+        const unsigned int glErrorTotal = render_gl::DrainedGlErrorTotal();
+        const unsigned int glErrors = glErrorTotal - ctx->debugGlErrorBase;
+        ctx->debugGlErrorBase = glErrorTotal;
+
+        sv_debug_info info;
+        info.time = static_cast<double>(static_cast<float>(ctx->timeModel.GetTime()) - ctx->startTime);
+        info.frame = static_cast<uint32_t>(ctx->frame);
+        info.display_fps = static_cast<float>(ctx->debugWindowCalls / elapsed);
+        info.sim_steps_per_frame = static_cast<float>(ctx->frame - ctx->debugWindowFrame) / static_cast<float>(ctx->debugWindowCalls);
+        info.playback_rate = ctx->deterministic ? 1.0f : ctx->playbackRate;
+        info.preset_version = ctx->presetVersion;
+        info.warp_shader = gl != nullptr && gl->warpShaderActive ? 1 : 0;
+        info.comp_shader = gl != nullptr && gl->compShaderActive ? 1 : 0;
+        info.bass = ctx->mysound.imm_rel[0];
+        info.mid = ctx->mysound.imm_rel[1];
+        info.treb = ctx->mysound.imm_rel[2];
+        info.bass_att = ctx->mysound.avg_rel[0];
+        info.mid_att = ctx->mysound.avg_rel[1];
+        info.treb_att = ctx->mysound.avg_rel[2];
+        info.texsize_x = ctx->texsizeX;
+        info.texsize_y = ctx->texsizeY;
+        info.width = ctx->width;
+        info.height = ctx->height;
+        info.feedback_format = 0;
+        info.gl_errors = gl != nullptr ? static_cast<int>(glErrors) : 0;
+        info.limiter_active = gl != nullptr && gl->limiterEnabled ? 1 : 0;
+        info.preset_name = ctx->presetName.c_str();
+        info.last_error = ctx->lastError.c_str();
+
+        fn(&info, user);
+    }
+
+    void BdTickDebugInfo(sv_context* ctx)
+    {
+        const double now = BdWallSeconds();
+        const double gap = now - ctx->debugLastCall;
+        ctx->debugLastCall = now;
+
+        if (ctx->debugWindowPending || gap > std::max(static_cast<double>(ctx->debugInterval), kBeatdropMaxFrameDtSeconds))
+        {
+            BdRestartDebugWindow(ctx, now);
+            return;
+        }
+
+        ctx->debugWindowCalls++;
+
+        const double elapsed = now - ctx->debugWindowStart;
+        if (elapsed < static_cast<double>(ctx->debugInterval) || elapsed <= 0.0)
+            return;
+
+        BdEmitDebugInfo(ctx, elapsed);
+
+        if (!ctx->debugWindowPending)
+            BdRestartDebugWindow(ctx, now);
+    }
 }
 
 extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo)
 {
-    if (ctx == nullptr || ctx->paused)
+    if (ctx == nullptr)
+        return;
+
+    if (ctx->debugFn != nullptr && ctx->debugInterval > 0.0f)
+        BdTickDebugInfo(ctx);
+
+    if (ctx->paused)
         return;
 
     ctx->lastFrameDt = dt_seconds;

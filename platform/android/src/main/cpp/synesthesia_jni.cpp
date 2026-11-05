@@ -21,9 +21,11 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -42,6 +44,8 @@ namespace
     constexpr float kClearAlpha = 1.0f;
     constexpr size_t kLogReadChunk = 512;
     constexpr size_t kValidateErrorBytes = 1024;
+    constexpr int kDebugValueCount = 21;
+    constexpr int kDebugStringCount = 2;
 
     void ForwardStderrToLogcat(int readFd)
     {
@@ -107,6 +111,77 @@ namespace
         }
 
         return symbol;
+    }
+
+    struct DebugSink
+    {
+        std::mutex mutex;
+        jlong sequence = 0;
+        double values[kDebugValueCount] = {};
+        std::string presetName;
+        std::string lastError;
+    };
+
+    std::mutex g_debugSinksMutex;
+    std::unordered_map<jlong, std::unique_ptr<DebugSink>> g_debugSinks;
+
+    DebugSink* FindDebugSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_debugSinksMutex);
+        auto found = g_debugSinks.find(handle);
+        return found != g_debugSinks.end() ? found->second.get() : nullptr;
+    }
+
+    DebugSink* AcquireDebugSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_debugSinksMutex);
+        std::unique_ptr<DebugSink>& slot = g_debugSinks[handle];
+
+        if (!slot)
+            slot.reset(new DebugSink());
+
+        return slot.get();
+    }
+
+    void ReleaseDebugSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_debugSinksMutex);
+        g_debugSinks.erase(handle);
+    }
+
+    void StoreDebugInfo(const sv_debug_info* info, void* user)
+    {
+        DebugSink* sink = static_cast<DebugSink*>(user);
+
+        if (info == nullptr || sink == nullptr)
+            return;
+
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        double* v = sink->values;
+        v[0] = info->time;
+        v[1] = info->frame;
+        v[2] = info->display_fps;
+        v[3] = info->sim_steps_per_frame;
+        v[4] = info->playback_rate;
+        v[5] = info->preset_version;
+        v[6] = info->warp_shader;
+        v[7] = info->comp_shader;
+        v[8] = info->bass;
+        v[9] = info->mid;
+        v[10] = info->treb;
+        v[11] = info->bass_att;
+        v[12] = info->mid_att;
+        v[13] = info->treb_att;
+        v[14] = info->texsize_x;
+        v[15] = info->texsize_y;
+        v[16] = info->width;
+        v[17] = info->height;
+        v[18] = info->feedback_format;
+        v[19] = info->gl_errors;
+        v[20] = info->limiter_active;
+        sink->presetName = info->preset_name != nullptr ? info->preset_name : "";
+        sink->lastError = info->last_error != nullptr ? info->last_error : "";
+        ++sink->sequence;
     }
 
     sv_context* ToContext(jlong handle)
@@ -306,6 +381,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeDestroy(JNIEnv*, jclass, jlong handle)
 {
     sv_destroy(ToContext(handle));
+    ReleaseDebugSink(handle);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -413,6 +489,82 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeSetPlaybackRate(JNIEnv*, jclass, jlong handle, jfloat rate)
 {
     sv_set_playback_rate(ToContext(handle), rate);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetDebugEnabled(JNIEnv*, jclass, jlong handle, jboolean enabled)
+{
+    if (enabled != JNI_TRUE)
+    {
+        sv_set_debug_callback(ToContext(handle), nullptr, nullptr);
+        DebugSink* sink = FindDebugSink(handle);
+
+        if (sink == nullptr)
+            return 0;
+
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        return sink->sequence;
+    }
+
+    DebugSink* sink = AcquireDebugSink(handle);
+    sv_set_debug_callback(ToContext(handle), StoreDebugInfo, sink);
+    std::lock_guard<std::mutex> guard(sink->mutex);
+    return sink->sequence;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetDebugInterval(JNIEnv*, jclass, jlong handle, jfloat seconds)
+{
+    sv_set_debug_interval(ToContext(handle), seconds);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeDebugSequence(JNIEnv*, jclass, jlong handle)
+{
+    DebugSink* sink = FindDebugSink(handle);
+
+    if (sink == nullptr)
+        return 0;
+
+    std::lock_guard<std::mutex> guard(sink->mutex);
+    return sink->sequence;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeReadDebugInfo(JNIEnv* env, jclass, jlong handle, jdoubleArray valuesOut, jobjectArray stringsOut)
+{
+    DebugSink* sink = FindDebugSink(handle);
+
+    if (sink == nullptr || valuesOut == nullptr || stringsOut == nullptr)
+        return 0;
+
+    if (env->GetArrayLength(valuesOut) < kDebugValueCount || env->GetArrayLength(stringsOut) < kDebugStringCount)
+        return 0;
+
+    double values[kDebugValueCount];
+    std::string presetName;
+    std::string lastError;
+    jlong sequence;
+
+    {
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        std::copy(sink->values, sink->values + kDebugValueCount, values);
+        presetName = sink->presetName;
+        lastError = sink->lastError;
+        sequence = sink->sequence;
+    }
+
+    env->SetDoubleArrayRegion(valuesOut, 0, kDebugValueCount, values);
+
+    jbyteArray name = ToBytes(env, presetName);
+    env->SetObjectArrayElement(stringsOut, 0, name);
+    env->DeleteLocalRef(name);
+
+    jbyteArray error = ToBytes(env, lastError);
+    env->SetObjectArrayElement(stringsOut, 1, error);
+    env->DeleteLocalRef(error);
+
+    return sequence;
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

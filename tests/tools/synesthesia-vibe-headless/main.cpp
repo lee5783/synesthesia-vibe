@@ -31,6 +31,39 @@ namespace
     const char kResourceRootRelativePath[] = "ref-src/beatdrop/BeatDrop/BeatDrop Resources";
     const char kBadPresetRelativePath[] = "resources/mvp-presets/this-preset-does-not-exist.milk";
     const char kRendererUnavailable[] = "renderer unavailable";
+    constexpr float kDebugIntervalSeconds = 1.0e-6f;
+    constexpr int kDebugReportsBeforeDisable = 5;
+
+    struct BdDebugProbe
+    {
+        sv_context* ctx = nullptr;
+        int reports = 0;
+        int glFieldViolations = 0;
+    };
+
+    void BdOnDebugInfo(const sv_debug_info* info, void* user)
+    {
+        BdDebugProbe* probe = static_cast<BdDebugProbe*>(user);
+        probe->reports++;
+
+        if (info->warp_shader != 0 || info->comp_shader != 0 || info->gl_errors != 0 || info->limiter_active != 0)
+            probe->glFieldViolations++;
+
+        printf("synesthesia-vibe-headless: debug-info #%d time=%.4f frame=%u display_fps=%.1f sim_steps_per_frame=%.2f "
+            "playback_rate=%.2f preset_version=%d warp_shader=%d comp_shader=%d bass=%.3f mid=%.3f treb=%.3f "
+            "bass_att=%.3f mid_att=%.3f treb_att=%.3f texsize=%dx%d size=%dx%d feedback_format=%d gl_errors=%d "
+            "limiter_active=%d preset_name=\"%s\" last_error=\"%s\"\n",
+            probe->reports, info->time, info->frame, info->display_fps, info->sim_steps_per_frame, info->playback_rate,
+            info->preset_version, info->warp_shader, info->comp_shader, info->bass, info->mid, info->treb,
+            info->bass_att, info->mid_att, info->treb_att, info->texsize_x, info->texsize_y, info->width, info->height,
+            info->feedback_format, info->gl_errors, info->limiter_active, info->preset_name, info->last_error);
+
+        if (probe->reports == kDebugReportsBeforeDisable)
+        {
+            sv_set_debug_interval(probe->ctx, 0.0f);
+            printf("synesthesia-vibe-headless: debug-info interval set to 0 from inside the callback\n");
+        }
+    }
 
     const char* BdStatusName(sv_status status)
     {
@@ -194,8 +227,22 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    BdDebugProbe probe;
+    probe.ctx = ctx;
+    sv_set_debug_callback(ctx, BdOnDebugInfo, &probe);
+    sv_set_debug_interval(ctx, kDebugIntervalSeconds);
+
     const int framesRendered = BdRunFrames(ctx, outDir);
+    sv_set_debug_callback(ctx, nullptr, nullptr);
     sv_destroy(ctx);
+
+    printf("synesthesia-vibe-headless: debug-info reports=%d gl_field_violations=%d\n", probe.reports, probe.glFieldViolations);
+
+    if (probe.reports != kDebugReportsBeforeDisable || probe.glFieldViolations != 0)
+    {
+        fprintf(stderr, "synesthesia-vibe-headless: FAIL expected %d debug-info reports with zero GL fields\n", kDebugReportsBeforeDisable);
+        return EXIT_FAILURE;
+    }
 
     sv_context* badCtx = sv_create(&config);
     if (badCtx == nullptr)

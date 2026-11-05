@@ -17,6 +17,16 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     }
     @Published public private(set) var lastError: Error?
     @Published public private(set) var levels = SVAudioLevels(bass: 0, mid: 0, treble: 0)
+    @Published public private(set) var debugInfo: [String: Any]?
+    @Published public var debugEnabled = false {
+        didSet {
+            view?.debugEnabled = debugEnabled
+            if !debugEnabled { debugInfo = nil }
+        }
+    }
+    @Published public var debugInterval: Float = 1 {
+        didSet { view?.debugInterval = debugInterval }
+    }
 
     public let configuration: SVContextConfiguration
     public private(set) weak var view: SVView?
@@ -46,12 +56,18 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.configuration = configuration
         view.delegate = self
         view.isPaused = isPaused
+        view.debugInterval = debugInterval
+        view.debugEnabled = debugEnabled
+        view.debugInfoHandler = { [weak self] info in
+            self?.debugInfo = info
+        }
         self.view = view
     }
 
     public func detach(from view: SVView) {
         guard self.view === view else { return }
         view.delegate = nil
+        view.debugInfoHandler = nil
         self.view = nil
         context = nil
         audioInput?.stop()
