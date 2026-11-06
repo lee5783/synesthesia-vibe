@@ -11,6 +11,8 @@ import android.Manifest
 import android.media.projection.MediaProjection
 import android.opengl.GLSurfaceView
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
@@ -51,6 +53,20 @@ class VisualizerController(
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
+    var debugEnabled by mutableStateOf(false)
+        private set
+    var debugInterval by mutableStateOf(1f)
+        private set
+    var debugInfo by mutableStateOf<Map<String, Any?>?>(null)
+        private set
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val debugListener = SynesthesiaContext.DebugListener { info ->
+        Log.i(TAG, "debug report thread=${Thread.currentThread().name} time=${info["time"]} frame=${info["frame"]} display_fps=${info["display_fps"]}")
+        mainHandler.post {
+            if (debugEnabled) debugInfo = info
+        }
+    }
 
     private val renderer = SynesthesiaRenderer(
         SynesthesiaConfiguration.builder()
@@ -130,6 +146,20 @@ class VisualizerController(
     fun setPlaybackRate(rate: Float) {
         renderer.playbackRate = rate
         Log.i(TAG, "playback rate $rate")
+    }
+
+    fun enableDebug(enabled: Boolean) {
+        debugEnabled = enabled
+        renderer.debugListener = if (enabled) debugListener else null
+        if (!enabled) debugInfo = null
+        Log.i(TAG, "debug overlay enabled=$enabled")
+    }
+
+    fun cycleDebugInterval() {
+        val next = DEBUG_INTERVALS[(DEBUG_INTERVALS.indexOf(debugInterval) + 1) % DEBUG_INTERVALS.size]
+        debugInterval = next
+        renderer.debugInterval = next
+        Log.i(TAG, "debug interval $next")
     }
 
     fun useWav() {
@@ -229,6 +259,7 @@ class VisualizerController(
     private companion object {
         const val TAG = "SynesthesiaVibeSample"
         const val BLEND_SECONDS = 2f
+        val DEBUG_INTERVALS = listOf(0.5f, 1f, 2f)
         const val FRAME_SECONDS = 1.0 / 60.0
         const val MAX_FEED_SECONDS = 0.25
         const val NANOS_PER_SECOND = 1.0e9

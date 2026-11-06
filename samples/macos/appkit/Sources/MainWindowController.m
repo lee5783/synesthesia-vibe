@@ -24,6 +24,31 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
 {
     return @[ @1.0, @0.75, @0.5, @0.25 ];
 }
+static NSArray<NSNumber *> *MainWindowDebugIntervals(void)
+{
+    return @[ @0.5, @1.0, @2.0 ];
+}
+
+static NSString *MainWindowDebugSummary(NSDictionary<NSString *, id> *info)
+{
+    return [NSString stringWithFormat:@"time %.2f  frame %d\n"
+                                      @"fps %.1f  steps %.2f  rate %.2f\n"
+                                      @"ver %d  warp %d  comp %d  limiter %d\n"
+                                      @"bass %.2f  mid %.2f  treb %.2f\n"
+                                      @"att %.2f / %.2f / %.2f\n"
+                                      @"tex %dx%d  view %dx%d\n"
+                                      @"fb %d  gl_err %d\n"
+                                      @"preset: %@\n"
+                                      @"error: %@",
+                                      [info[@"time"] doubleValue], [info[@"frame"] intValue],
+                                      [info[@"display_fps"] floatValue], [info[@"sim_steps_per_frame"] floatValue], [info[@"playback_rate"] floatValue],
+                                      [info[@"preset_version"] intValue], [info[@"warp_shader"] intValue], [info[@"comp_shader"] intValue], [info[@"limiter_active"] intValue],
+                                      [info[@"bass"] floatValue], [info[@"mid"] floatValue], [info[@"treb"] floatValue],
+                                      [info[@"bass_att"] floatValue], [info[@"mid_att"] floatValue], [info[@"treb_att"] floatValue],
+                                      [info[@"texsize_x"] intValue], [info[@"texsize_y"] intValue], [info[@"width"] intValue], [info[@"height"] intValue],
+                                      [info[@"feedback_format"] intValue], [info[@"gl_errors"] intValue],
+                                      info[@"preset_name"], info[@"last_error"]];
+}
 
 @interface MainWindowController () <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, VisualizerViewControllerDelegate>
 
@@ -36,6 +61,9 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
 @property (nonatomic, strong) NSButton *pausedCheckbox;
 @property (nonatomic, strong) NSPopUpButton *frameRatePopUp;
 @property (nonatomic, strong) NSPopUpButton *renderScalePopUp;
+@property (nonatomic, strong) NSButton *debugCheckbox;
+@property (nonatomic, strong) NSPopUpButton *debugIntervalPopUp;
+@property (nonatomic, strong) NSTextField *debugLabel;
 @property (nonatomic, strong) NSTextField *levelsLabel;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong, nullable) NSTimer *levelsTimer;
@@ -46,7 +74,7 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
 
 - (instancetype)init
 {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, MainWindowSidebarWidth + 838, 520)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, MainWindowSidebarWidth + 838, 680)
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                                              NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
                                                      backing:NSBackingStoreBuffered
@@ -76,6 +104,10 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
     self.visualizerViewController.delegate = self;
 
     NSView *visualizerView = self.visualizerViewController.view;
+    __weak MainWindowController *weakSelf = self;
+    self.visualizerViewController.debugInfoHandler = ^(NSDictionary<NSString *, id> *info) {
+        weakSelf.debugLabel.stringValue = MainWindowDebugSummary(info);
+    };
     visualizerView.translatesAutoresizingMaskIntoConstraints = NO;
 
     NSView *sidebar = [self buildSidebar];
@@ -115,6 +147,9 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
     presetScrollView.hasVerticalScroller = YES;
     presetScrollView.borderType = NSBezelBorder;
     [presetScrollView setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
+    NSLayoutConstraint *presetMinimumHeight = [presetScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:120.0];
+    presetMinimumHeight.priority = NSLayoutPriorityDefaultHigh;
+    presetMinimumHeight.active = YES;
 
     self.wavLabel = [NSTextField wrappingLabelWithString:@""];
     self.wavLabel.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
@@ -146,6 +181,20 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
     NSUInteger renderScaleIndex = [MainWindowRenderScales() indexOfObject:@(self.visualizerViewController.renderScale)];
     [self.renderScalePopUp selectItemAtIndex:renderScaleIndex != NSNotFound ? (NSInteger)renderScaleIndex : 0];
 
+    self.debugCheckbox = [NSButton checkboxWithTitle:@"Debug info" target:self action:@selector(toggleDebugInfo:)];
+    self.debugCheckbox.state = self.visualizerViewController.debugEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+
+    self.debugIntervalPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *interval in MainWindowDebugIntervals())
+        [self.debugIntervalPopUp addItemWithTitle:[NSString stringWithFormat:@"Every %g s", interval.doubleValue]];
+    self.debugIntervalPopUp.target = self;
+    self.debugIntervalPopUp.action = @selector(changeDebugInterval:);
+    NSUInteger debugIntervalIndex = [MainWindowDebugIntervals() indexOfObject:@(self.visualizerViewController.debugInterval)];
+    [self.debugIntervalPopUp selectItemAtIndex:debugIntervalIndex != NSNotFound ? (NSInteger)debugIntervalIndex : 1];
+
+    self.debugLabel = [NSTextField wrappingLabelWithString:@""];
+    self.debugLabel.font = [NSFont monospacedSystemFontOfSize:10.0 weight:NSFontWeightRegular];
+
     NSButton *snapshotButton = [NSButton buttonWithTitle:@"Save Snapshot…" target:self action:@selector(saveSnapshot:)];
 
     self.levelsLabel = [NSTextField labelWithString:@""];
@@ -166,6 +215,9 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
         self.frameRatePopUp,
         self.renderScalePopUp,
         snapshotButton,
+        self.debugCheckbox,
+        self.debugIntervalPopUp,
+        self.debugLabel,
         self.levelsLabel,
         self.statusLabel
     ]];
@@ -176,6 +228,7 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
     [presetScrollView.widthAnchor constraintEqualToAnchor:sidebar.widthAnchor constant:-24.0].active = YES;
     [self.wavLabel.widthAnchor constraintEqualToAnchor:presetScrollView.widthAnchor].active = YES;
     [self.statusLabel.widthAnchor constraintEqualToAnchor:presetScrollView.widthAnchor].active = YES;
+    [self.debugLabel.widthAnchor constraintEqualToAnchor:presetScrollView.widthAnchor].active = YES;
     return sidebar;
 }
 
@@ -285,6 +338,21 @@ static NSArray<NSNumber *> *MainWindowRenderScales(void)
     NSInteger index = sender.indexOfSelectedItem;
     if (index >= 0 && (NSUInteger)index < MainWindowRenderScales().count)
         self.visualizerViewController.renderScale = (CGFloat)MainWindowRenderScales()[(NSUInteger)index].doubleValue;
+}
+
+- (void)toggleDebugInfo:(NSButton *)sender
+{
+    BOOL enabled = sender.state == NSControlStateValueOn;
+    self.visualizerViewController.debugEnabled = enabled;
+    if (!enabled)
+        self.debugLabel.stringValue = @"";
+}
+
+- (void)changeDebugInterval:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    if (index >= 0 && (NSUInteger)index < MainWindowDebugIntervals().count)
+        self.visualizerViewController.debugInterval = MainWindowDebugIntervals()[(NSUInteger)index].floatValue;
 }
 
 - (void)saveSnapshot:(id)sender

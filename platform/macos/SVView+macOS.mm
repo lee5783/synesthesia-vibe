@@ -113,6 +113,9 @@ namespace
     BOOL _hasPreferredFramesPerSecond;
     CGFloat _renderScale;
     float _playbackRate;
+    float _debugInterval;
+    BOOL _debugEnabled;
+    void (^_debugInfoHandler)(NSDictionary<NSString *, id> *);
     BOOL _frameRateHintApplied;
     BOOL _surfaceBackingSizeEnabled;
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
@@ -147,6 +150,7 @@ namespace
     _effectivelyPaused = YES;
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
+    _debugInterval = 1.0f;
 
     NSOpenGLPixelFormatAttribute attributes[] = {
         NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
@@ -248,6 +252,39 @@ namespace
     fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
 }
 
+- (void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    return _debugInfoHandler;
+}
+
+- (void)setDebugInfoHandler:(void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    _debugInfoHandler = [debugInfoHandler copy];
+    _context.debugInfoHandler = _debugInfoHandler;
+}
+
+- (float)debugInterval
+{
+    return _debugInterval;
+}
+
+- (void)setDebugInterval:(float)debugInterval
+{
+    _debugInterval = debugInterval;
+    _context.debugInterval = debugInterval;
+}
+
+- (BOOL)debugEnabled
+{
+    return _debugEnabled;
+}
+
+- (void)setDebugEnabled:(BOOL)debugEnabled
+{
+    _debugEnabled = debugEnabled;
+    _context.debugEnabled = debugEnabled;
+}
+
 - (CGFloat)renderScale
 {
     return _renderScale;
@@ -297,6 +334,9 @@ namespace
 
     _context = context;
     context.playbackRate = _playbackRate;
+    context.debugInterval = _debugInterval;
+    context.debugInfoHandler = _debugInfoHandler;
+    context.debugEnabled = _debugEnabled;
     self.drawableSize = pixels;
     if (!_hasPreferredFramesPerSecond) {
         _preferredFramesPerSecond = SVNormalizedFramesPerSecond(configuration.maxFps);

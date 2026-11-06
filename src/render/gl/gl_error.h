@@ -17,6 +17,8 @@ const char* GlErrorName(unsigned int error);
 
 int DrainGlErrors(const char* szCallSite);
 
+unsigned int DrainedGlErrorTotal();
+
 bool CheckGlError(const char* szCallSite);
 
 bool GlFunctionsLoaded();

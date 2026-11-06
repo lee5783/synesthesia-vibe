@@ -51,6 +51,15 @@
             </select>
             <button id="fullscreen-button" type="button">Fullscreen</button>
         </div>
+        <div class="group">
+            <button id="debug-toggle" type="button" aria-pressed="false">Debug info: off</button>
+            <label for="debug-interval">Every</label>
+            <select id="debug-interval">
+                <option value="0.5">0.5 s</option>
+                <option value="1" selected>1 s</option>
+                <option value="2">2 s</option>
+            </select>
+        </div>
         <div class="meters">
             <div class="meter"><span>bass</span><div class="bar"><div id="meter-bass"></div></div><output id="value-bass">0.00</output></div>
             <div class="meter"><span>mid</span><div class="bar"><div id="meter-mid"></div></div><output id="value-mid">0.00</output></div>
@@ -58,6 +67,8 @@
         </div>
         <p id="status-line" class="status-line"></p>
     </div>
+
+    <pre id="debug-info" class="debug-info" hidden></pre>
 
     <div id="capture-panel" class="capture-panel" hidden>
         <h1>Capture</h1>

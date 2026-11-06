@@ -6,6 +6,7 @@
 //
 
 #include "context.h"
+#include "gl_error.h"
 #include "gl_pipeline.h"
 
 #include <algorithm>
@@ -330,6 +331,17 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->displayFps = ctx->fpsHint;
     ctx->limiterLastTime = 0.0f;
 
+    ctx->debugFn = nullptr;
+    ctx->debugUser = nullptr;
+    ctx->debugInterval = kBeatdropDefaultDebugIntervalSeconds;
+    ctx->debugWindowPending = true;
+    ctx->debugWindowStart = 0.0;
+    ctx->debugLastCall = 0.0;
+    ctx->debugWindowCalls = 0;
+    ctx->debugWindowFrame = 0;
+    ctx->debugGlErrorBase = 0;
+    ctx->presetVersion = 0;
+
     ctx->nGridX = ctx->meshX;
     ctx->nGridY = ctx->meshY;
 
@@ -437,6 +449,7 @@ extern "C" void sv_resume(sv_context* ctx)
     ctx->stepAccumulator = 0.0;
     ctx->lastWallSeconds = 0.0;
     ctx->resumePending = true;
+    ctx->debugWindowPending = true;
 }
 
 extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
@@ -448,6 +461,29 @@ extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
         rate = 1.0f;
 
     ctx->playbackRate = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
+}
+
+extern "C" void sv_set_debug_callback(sv_context* ctx, sv_debug_fn fn, void* user)
+{
+    if (ctx == nullptr)
+        return;
+
+    ctx->debugFn = fn;
+    ctx->debugUser = user;
+    ctx->debugWindowPending = true;
+    ctx->debugGlErrorBase = render_gl::DrainedGlErrorTotal();
+}
+
+extern "C" void sv_set_debug_interval(sv_context* ctx, float seconds)
+{
+    if (ctx == nullptr)
+        return;
+
+    if (!std::isfinite(seconds))
+        seconds = kBeatdropDefaultDebugIntervalSeconds;
+
+    ctx->debugInterval = seconds;
+    ctx->debugWindowPending = true;
 }
 
 extern "C" const char* sv_last_error(sv_context* ctx)

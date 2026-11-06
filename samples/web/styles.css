@@ -61,7 +61,7 @@ select option {
     background: rgba(0, 0, 0, 0.55);
 }
 
-.overlay[hidden], .toolbar[hidden], .error-banner[hidden], .capture-panel[hidden] {
+.overlay[hidden], .toolbar[hidden], .error-banner[hidden], .capture-panel[hidden], .debug-info[hidden] {
     display: none;
 }
 
@@ -168,6 +168,20 @@ select option {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.debug-info {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    margin: 0;
+    padding: 10px 14px;
+    background: var(--panel);
+    border-radius: 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
 }
 
 .error-banner {

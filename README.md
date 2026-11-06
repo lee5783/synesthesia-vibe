@@ -63,18 +63,30 @@ in the tables below.
   does not translate). Do not run them while a preset loads on another thread.
 - **Stricter loading:** `sv_load_preset` and `sv_load_preset_memory` return `SV_ERR_PARSE` for an empty
   file or text that has no `[preset00]` section and no preset key.
+- **Debug info:** `sv_set_debug_callback(ctx, fn, user)` and `sv_set_debug_interval(ctx, seconds)` turn on
+  a periodic `sv_debug_info` report. It is off by default and costs nothing when off. The interval defaults
+  to 1 s, and `<= 0` disables it. The report covers time, frame, measured FPS, simulation steps per frame,
+  playback rate, preset version and name, shader stages, audio levels, sizes, GL errors since the last
+  report, the limiter and the last error. It is delivered from `sv_render_frame` on wall-clock time, so a
+  paused view whose loop stops also stops reporting. The struct and its strings are valid only during the
+  callback. Deterministic captures are unaffected.
 
 | Setting | Apple (Objective-C / Swift) | Android (Java) | Web (JavaScript) |
 |---|---|---|---|
 | Frame-rate cap | `SVContextConfiguration.maxFps` | `Builder.setMaxFps` | `config.maxFps` |
 | Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
+| Debug info | `SVContext` / `SVView` `debugInfoHandler`, `debugInterval`, `debugEnabled` (Swift `SynesthesiaPlayer.debugInfo`) | `SynesthesiaContext.setDebugListener`, `setDebugInterval`; `SynesthesiaRenderer.setDebugListener`, `setDebugInterval` | `SynesthesiaContext.onDebugInfo`, `setDebugInterval`; `SynesthesiaCanvas.onDebugInfo`, `setDebugInterval` |
 | Validation | `+[SVContext validatePresetAtURL:error:]`, `+validatePresetText:error:` (Swift `validatePreset(at:)`, `validatePreset(text:)`) | `SynesthesiaContext.validatePreset(File)`, `validatePresetText(String[, File])` | `SynesthesiaContext.validatePreset(module, path)`, `validatePresetText(module, text)` |
 
 - **Android:** `SynesthesiaRenderer.setPlaybackRate` can be called from any thread; the renderer applies
   it on the GL thread before the next frame. `validatePresetText` writes the text to a temporary file in
   the directory you pass (for example `Context.getCacheDir()`), or in `java.io.tmpdir`, and throws
   `SV_ERR_IO` if it cannot.
+- **Debug info delivery:** each wrapper hands over a copy keyed by the C field names, after the frame
+  renders. Apple passes an `NSDictionary` on the main thread. Android passes a `Map<String, Object>` on
+  the GL thread, outside the context lock, so post to the UI thread yourself. The web passes a plain
+  object. Each wrapper re-applies the settings when its context is recreated.
 
 ### Apple view and audio inputs
 

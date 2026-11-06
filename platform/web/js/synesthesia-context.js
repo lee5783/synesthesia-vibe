@@ -12,6 +12,8 @@ const PINNED_DATE_FIELDS = 8;
 const AUDIO_LEVEL_FIELDS = 3;
 const FLOAT_BYTES = 4;
 const INT_BYTES = 4;
+const DOUBLE_BYTES = 8;
+const DEBUG_SEQUENCE_OFFSET = 8;
 
 export class SynesthesiaContext {
 
@@ -20,6 +22,9 @@ export class SynesthesiaContext {
     #scratch = 0;
     #scratchBytes = 0;
     #levels = 0;
+    #onDebugInfo = null;
+    #debugReport = 0;
+    #debugSequence = 0;
 
     constructor(module, handle) {
         this.#module = module;
@@ -172,6 +177,9 @@ export class SynesthesiaContext {
 
     render(deltaSeconds, targetFramebuffer = 0) {
         this.#module._sv_web_render(this.#requireHandle(), deltaSeconds, targetFramebuffer >>> 0);
+
+        if (this.#onDebugInfo !== null)
+            this.#deliverDebugInfo();
     }
 
     resize(widthPixels, heightPixels) {
@@ -188,6 +196,33 @@ export class SynesthesiaContext {
 
     setPlaybackRate(rate) {
         this.#module._sv_web_set_playback_rate(this.#requireHandle(), rate);
+    }
+
+    get onDebugInfo() {
+        return this.#onDebugInfo;
+    }
+
+    set onDebugInfo(handler) {
+        const handle = this.#requireHandle();
+
+        if (handler !== null && handler !== undefined && typeof handler !== "function")
+            throw new TypeError("onDebugInfo takes a function or null");
+
+        const enabled = typeof handler === "function";
+        const wasEnabled = this.#onDebugInfo !== null;
+        this.#onDebugInfo = enabled ? handler : null;
+
+        if (enabled === wasEnabled)
+            return;
+
+        this.#module._sv_web_set_debug_enabled(handle, enabled ? 1 : 0);
+
+        if (enabled)
+            this.#debugSequence = this.#module.HEAP32[(this.#debugReportPointer() + DEBUG_SEQUENCE_OFFSET) / INT_BYTES];
+    }
+
+    setDebugInterval(seconds) {
+        this.#module._sv_web_set_debug_interval(this.#requireHandle(), seconds);
     }
 
     audioLevels() {
@@ -227,6 +262,7 @@ export class SynesthesiaContext {
 
         this.#module._sv_web_destroy(this.#handle);
         this.#handle = 0;
+        this.#onDebugInfo = null;
 
         if (this.#scratch !== 0)
             this.#module._free(this.#scratch);
@@ -261,6 +297,52 @@ export class SynesthesiaContext {
 
         if (status !== SynesthesiaError.SV_OK)
             throw new SynesthesiaError(status, this.#module.UTF8ToString(this.#module._sv_web_capture_error()));
+    }
+
+    #debugReportPointer() {
+        if (this.#debugReport === 0)
+            this.#debugReport = this.#module._sv_web_debug_report();
+
+        return this.#debugReport;
+    }
+
+    #deliverDebugInfo() {
+        const module = this.#module;
+        const base = this.#debugReportPointer();
+        const ints = module.HEAP32;
+        const sequence = ints[(base + DEBUG_SEQUENCE_OFFSET) / INT_BYTES];
+
+        if (sequence === this.#debugSequence)
+            return;
+
+        this.#debugSequence = sequence;
+        const floats = module.HEAPF32;
+        const word = byteOffset => (base + byteOffset) / INT_BYTES;
+        this.#onDebugInfo({
+            time: module.HEAPF64[base / DOUBLE_BYTES],
+            frame: ints[word(12)] >>> 0,
+            display_fps: floats[word(16)],
+            sim_steps_per_frame: floats[word(20)],
+            playback_rate: floats[word(24)],
+            preset_version: ints[word(28)],
+            warp_shader: ints[word(32)],
+            comp_shader: ints[word(36)],
+            bass: floats[word(40)],
+            mid: floats[word(44)],
+            treb: floats[word(48)],
+            bass_att: floats[word(52)],
+            mid_att: floats[word(56)],
+            treb_att: floats[word(60)],
+            texsize_x: ints[word(64)],
+            texsize_y: ints[word(68)],
+            width: ints[word(72)],
+            height: ints[word(76)],
+            feedback_format: ints[word(80)],
+            gl_errors: ints[word(84)],
+            limiter_active: ints[word(88)],
+            preset_name: module.UTF8ToString(module._sv_web_debug_preset_name()),
+            last_error: module.UTF8ToString(module._sv_web_debug_last_error())
+        });
     }
 
     #check(status) {

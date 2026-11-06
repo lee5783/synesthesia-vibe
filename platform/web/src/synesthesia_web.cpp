@@ -16,6 +16,8 @@
 #include <emscripten/html5_webgl.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -35,9 +37,42 @@ namespace
     constexpr float kClearAlpha = 1.0f;
     constexpr size_t kValidateErrorBytes = 1024;
 
+    struct WebDebugReport
+    {
+        double time;
+        uint32_t sequence;
+        uint32_t frame;
+        float displayFps;
+        float simStepsPerFrame;
+        float playbackRate;
+        int32_t presetVersion;
+        int32_t warpShader;
+        int32_t compShader;
+        float bass;
+        float mid;
+        float treb;
+        float bassAtt;
+        float midAtt;
+        float trebAtt;
+        int32_t texsizeX;
+        int32_t texsizeY;
+        int32_t width;
+        int32_t height;
+        int32_t feedbackFormat;
+        int32_t glErrors;
+        int32_t limiterActive;
+    };
+
+    static_assert(offsetof(WebDebugReport, time) == 0, "debug report layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebDebugReport, sequence) == 8, "debug report layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebDebugReport, limiterActive) == 88, "debug report layout is read by synesthesia-context.js");
+
     std::string g_glStrings;
     std::string g_captureError;
     std::string g_validateError;
+    WebDebugReport g_debugReport = {};
+    std::string g_debugPresetName;
+    std::string g_debugLastError;
 
     void* GetGlProcAddress(const char* name)
     {
@@ -47,6 +82,35 @@ namespace
     std::string ToString(const char* text)
     {
         return text != nullptr ? std::string(text) : std::string();
+    }
+
+    void CopyDebugInfo(const sv_debug_info* info, void*)
+    {
+        WebDebugReport& report = g_debugReport;
+        report.time = info->time;
+        report.frame = info->frame;
+        report.displayFps = info->display_fps;
+        report.simStepsPerFrame = info->sim_steps_per_frame;
+        report.playbackRate = info->playback_rate;
+        report.presetVersion = info->preset_version;
+        report.warpShader = info->warp_shader;
+        report.compShader = info->comp_shader;
+        report.bass = info->bass;
+        report.mid = info->mid;
+        report.treb = info->treb;
+        report.bassAtt = info->bass_att;
+        report.midAtt = info->mid_att;
+        report.trebAtt = info->treb_att;
+        report.texsizeX = info->texsize_x;
+        report.texsizeY = info->texsize_y;
+        report.width = info->width;
+        report.height = info->height;
+        report.feedbackFormat = info->feedback_format;
+        report.glErrors = info->gl_errors;
+        report.limiterActive = info->limiter_active;
+        g_debugPresetName = ToString(info->preset_name);
+        g_debugLastError = ToString(info->last_error);
+        ++report.sequence;
     }
 
     const char* GlString(GLenum name)
@@ -205,12 +269,18 @@ extern "C" EMSCRIPTEN_KEEPALIVE sv_context* sv_web_create(
     config.max_luminance = maxLuminance;
     config.flash_limit = flashLimit;
 
+    g_debugReport = {};
+    g_debugPresetName.clear();
+    g_debugLastError.clear();
     return sv_create(&config);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_destroy(sv_context* ctx)
 {
     sv_destroy(ctx);
+    g_debugReport = {};
+    g_debugPresetName.clear();
+    g_debugLastError.clear();
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_load_preset(sv_context* ctx, const char* path, float blendSeconds)
@@ -298,6 +368,31 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_resume(sv_context* ctx)
 extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_playback_rate(sv_context* ctx, float rate)
 {
     sv_set_playback_rate(ctx, rate);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_debug_enabled(sv_context* ctx, int enabled)
+{
+    sv_set_debug_callback(ctx, enabled != 0 ? CopyDebugInfo : nullptr, nullptr);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_debug_interval(sv_context* ctx, float seconds)
+{
+    sv_set_debug_interval(ctx, seconds);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const void* sv_web_debug_report()
+{
+    return &g_debugReport;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_debug_preset_name()
+{
+    return g_debugPresetName.c_str();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_debug_last_error()
+{
+    return g_debugLastError.c_str();
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_last_error(sv_context* ctx)

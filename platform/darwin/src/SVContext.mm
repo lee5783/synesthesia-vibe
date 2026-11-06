@@ -28,6 +28,7 @@ namespace
     constexpr float kDefaultPlaybackRate = 1.0f;
     constexpr float kMinimumPlaybackRate = 0.125f;
     constexpr float kMaximumPlaybackRate = 8.0f;
+    constexpr float kDefaultDebugInterval = 1.0f;
 
 #if TARGET_OS_OSX
     constexpr const char* kGlFrameworkPath = "/System/Library/Frameworks/OpenGL.framework/OpenGL";
@@ -93,6 +94,40 @@ namespace
         return SVErrorArgument;
     }
 
+    NSString* SVDebugString(const char* text)
+    {
+        return text != nullptr ? ([NSString stringWithUTF8String:text] ?: @"") : @"";
+    }
+
+    NSDictionary<NSString*, id>* SVDebugInfoDictionary(const sv_debug_info* info)
+    {
+        return @{
+            @"time": @(info->time),
+            @"frame": @(info->frame),
+            @"display_fps": @(info->display_fps),
+            @"sim_steps_per_frame": @(info->sim_steps_per_frame),
+            @"playback_rate": @(info->playback_rate),
+            @"preset_version": @(info->preset_version),
+            @"warp_shader": @(info->warp_shader),
+            @"comp_shader": @(info->comp_shader),
+            @"bass": @(info->bass),
+            @"mid": @(info->mid),
+            @"treb": @(info->treb),
+            @"bass_att": @(info->bass_att),
+            @"mid_att": @(info->mid_att),
+            @"treb_att": @(info->treb_att),
+            @"texsize_x": @(info->texsize_x),
+            @"texsize_y": @(info->texsize_y),
+            @"width": @(info->width),
+            @"height": @(info->height),
+            @"feedback_format": @(info->feedback_format),
+            @"gl_errors": @(info->gl_errors),
+            @"limiter_active": @(info->limiter_active),
+            @"preset_name": SVDebugString(info->preset_name),
+            @"last_error": SVDebugString(info->last_error)
+        };
+    }
+
     BOOL SVValidationResult(sv_status status, const char* message, NSError** error)
     {
         if (status == SV_OK)
@@ -122,12 +157,27 @@ float SVNormalizedPlaybackRate(float rate)
 @property (nonatomic, copy, readwrite) SVContextConfiguration *configuration;
 @property (nonatomic, assign, readwrite, getter=isPaused) BOOL paused;
 
+- (void)storeDebugInfo:(const sv_debug_info *)info;
+- (void)applyDebugCallback;
+
 @end
+
+namespace
+{
+    void SVDebugInfoTrampoline(const sv_debug_info* info, void* user)
+    {
+        [(__bridge SVContext*)user storeDebugInfo:info];
+    }
+}
 
 @implementation SVContext
 {
     sv_context* _context;
     float _playbackRate;
+    float _debugInterval;
+    BOOL _debugEnabled;
+    void (^_debugInfoHandler)(NSDictionary<NSString*, id>*);
+    NSDictionary<NSString*, id>* _pendingDebugInfo;
 #if DEBUG
     NSThread* _renderThread;
 #endif
@@ -142,6 +192,7 @@ float SVNormalizedPlaybackRate(float rate)
 
     _configuration = [configuration copy];
     _playbackRate = kDefaultPlaybackRate;
+    _debugInterval = kDefaultDebugInterval;
 #if DEBUG
     _renderThread = [NSThread currentThread];
 #endif
@@ -295,8 +346,24 @@ float SVNormalizedPlaybackRate(float rate)
 {
     [self assertRenderThread];
 
-    if (_context != nullptr)
-        sv_render_frame(_context, deltaTime, targetFramebuffer);
+    if (_context == nullptr)
+        return;
+
+    sv_render_frame(_context, deltaTime, targetFramebuffer);
+
+    if (_pendingDebugInfo == nil)
+        return;
+
+    NSDictionary<NSString*, id>* info = _pendingDebugInfo;
+    _pendingDebugInfo = nil;
+
+    if (_debugInfoHandler != nil)
+        _debugInfoHandler(info);
+}
+
+- (void)storeDebugInfo:(const sv_debug_info *)info
+{
+    _pendingDebugInfo = SVDebugInfoDictionary(info);
 }
 
 - (void)resizeToWidth:(NSInteger)width height:(NSInteger)height
@@ -336,6 +403,52 @@ float SVNormalizedPlaybackRate(float rate)
 
     if (_context != nullptr)
         sv_set_playback_rate(_context, _playbackRate);
+}
+
+- (void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    return _debugInfoHandler;
+}
+
+- (void)setDebugInfoHandler:(void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    _debugInfoHandler = [debugInfoHandler copy];
+    [self applyDebugCallback];
+}
+
+- (float)debugInterval
+{
+    return _debugInterval;
+}
+
+- (void)setDebugInterval:(float)debugInterval
+{
+    _debugInterval = isfinite(debugInterval) ? debugInterval : kDefaultDebugInterval;
+
+    if (_context != nullptr)
+        sv_set_debug_interval(_context, _debugInterval);
+}
+
+- (BOOL)debugEnabled
+{
+    return _debugEnabled;
+}
+
+- (void)setDebugEnabled:(BOOL)debugEnabled
+{
+    _debugEnabled = debugEnabled;
+    [self applyDebugCallback];
+}
+
+- (void)applyDebugCallback
+{
+    const BOOL active = _debugEnabled && _debugInfoHandler != nil;
+
+    if (!active)
+        _pendingDebugInfo = nil;
+
+    if (_context != nullptr)
+        sv_set_debug_callback(_context, active ? SVDebugInfoTrampoline : nullptr, (__bridge void *)self);
 }
 
 - (SVAudioLevels)audioLevels

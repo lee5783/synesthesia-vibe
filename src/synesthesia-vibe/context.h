@@ -49,6 +49,7 @@ constexpr double kBeatdropMaxFrameDtSeconds = 1.0;
 constexpr float kBeatdropMinPlaybackRate = 0.125f;
 constexpr float kBeatdropMaxPlaybackRate = 8.0f;
 constexpr float kBeatdropDisplayFpsDamping = 0.9f;
+constexpr float kBeatdropDefaultDebugIntervalSeconds = 1.0f;
 
 struct BdGlPipeline;
 
@@ -87,6 +88,18 @@ struct sv_context
     bool resumePending;
     float displayFps;
     float limiterLastTime;
+
+    sv_debug_fn debugFn;
+    void* debugUser;
+    float debugInterval;
+    bool debugWindowPending;
+    double debugWindowStart;
+    double debugLastCall;
+    int debugWindowCalls;
+    int debugWindowFrame;
+    unsigned int debugGlErrorBase;
+    int presetVersion;
+    std::string presetName;
 
     int width;
     int height;

@@ -16,6 +16,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class SynesthesiaContext implements AutoCloseable {
@@ -28,7 +30,12 @@ public final class SynesthesiaContext implements AutoCloseable {
         System.loadLibrary("synesthesiavibe-jni");
     }
 
+    private static final int DEBUG_VALUE_COUNT = 21;
+    private static final int DEBUG_STRING_COUNT = 2;
+
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private volatile DebugListener debugListener;
+    private long debugSeenSequence;
     private long handle;
 
     private SynesthesiaContext(long handle) {
@@ -172,12 +179,31 @@ public final class SynesthesiaContext implements AutoCloseable {
     }
 
     public void render(double deltaSeconds, int targetFramebuffer) {
+        double[] debugValues = null;
+        byte[][] debugStrings = null;
+
         lock.readLock().lock();
         try {
-            nativeRender(requireHandle(), deltaSeconds, targetFramebuffer);
+            long current = requireHandle();
+            nativeRender(current, deltaSeconds, targetFramebuffer);
+
+            if (debugListener != null) {
+                long sequence = nativeDebugSequence(current);
+
+                if (sequence != debugSeenSequence) {
+                    debugValues = new double[DEBUG_VALUE_COUNT];
+                    debugStrings = new byte[DEBUG_STRING_COUNT][];
+                    debugSeenSequence = nativeReadDebugInfo(current, debugValues, debugStrings);
+                }
+            }
         } finally {
             lock.readLock().unlock();
         }
+
+        DebugListener listener = debugListener;
+
+        if (debugValues != null && listener != null)
+            listener.onDebugInfo(debugInfo(debugValues, debugStrings));
     }
 
     public void resize(int widthPixels, int heightPixels) {
@@ -211,6 +237,26 @@ public final class SynesthesiaContext implements AutoCloseable {
         lock.readLock().lock();
         try {
             nativeSetPlaybackRate(requireHandle(), rate);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setDebugListener(DebugListener listener) {
+        lock.readLock().lock();
+        try {
+            long current = requireHandle();
+            debugListener = listener;
+            debugSeenSequence = nativeSetDebugEnabled(current, listener != null);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setDebugInterval(float seconds) {
+        lock.readLock().lock();
+        try {
+            nativeSetDebugInterval(requireHandle(), seconds);
         } finally {
             lock.readLock().unlock();
         }
@@ -258,6 +304,8 @@ public final class SynesthesiaContext implements AutoCloseable {
     public void close() {
         lock.writeLock().lock();
         try {
+            debugListener = null;
+
             if (handle != 0) {
                 nativeDestroy(handle);
                 handle = 0;
@@ -335,6 +383,38 @@ public final class SynesthesiaContext implements AutoCloseable {
         return bytes != null ? new String(bytes, StandardCharsets.UTF_8) : "";
     }
 
+    private static Map<String, Object> debugInfo(double[] values, byte[][] strings) {
+        Map<String, Object> info = new HashMap<>();
+        info.put("time", values[0]);
+        info.put("frame", (long) values[1]);
+        info.put("display_fps", (float) values[2]);
+        info.put("sim_steps_per_frame", (float) values[3]);
+        info.put("playback_rate", (float) values[4]);
+        info.put("preset_version", (int) values[5]);
+        info.put("warp_shader", (int) values[6]);
+        info.put("comp_shader", (int) values[7]);
+        info.put("bass", (float) values[8]);
+        info.put("mid", (float) values[9]);
+        info.put("treb", (float) values[10]);
+        info.put("bass_att", (float) values[11]);
+        info.put("mid_att", (float) values[12]);
+        info.put("treb_att", (float) values[13]);
+        info.put("texsize_x", (int) values[14]);
+        info.put("texsize_y", (int) values[15]);
+        info.put("width", (int) values[16]);
+        info.put("height", (int) values[17]);
+        info.put("feedback_format", (int) values[18]);
+        info.put("gl_errors", (int) values[19]);
+        info.put("limiter_active", (int) values[20]);
+        info.put("preset_name", decode(strings[0]));
+        info.put("last_error", decode(strings[1]));
+        return info;
+    }
+
+    public interface DebugListener {
+        void onDebugInfo(Map<String, Object> info);
+    }
+
     public static final class AudioLevels {
 
         public final float bass;
@@ -380,6 +460,14 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native void nativeResume(long handle);
 
     private static native void nativeSetPlaybackRate(long handle, float rate);
+
+    private static native long nativeSetDebugEnabled(long handle, boolean enabled);
+
+    private static native void nativeSetDebugInterval(long handle, float seconds);
+
+    private static native long nativeDebugSequence(long handle);
+
+    private static native long nativeReadDebugInfo(long handle, double[] valuesOut, byte[][] stringsOut);
 
     private static native byte[] nativeLastError(long handle);
 

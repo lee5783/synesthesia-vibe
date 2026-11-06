@@ -270,6 +270,20 @@ namespace
         GetFast_CLEAR();
     }
 
+    int BdReadPresetVersion(const std::wstring& nativePath)
+    {
+        FILE* f = ParserWfopen(nativePath.c_str(), L"rb");
+        if (f == nullptr)
+            return 0;
+
+        GetFast_CLEAR();
+        const int presetVersion = GetFastInt("MILKDROP_PRESET_VERSION", 100, f);
+        GetFast_CLEAR();
+
+        fclose(f);
+        return presetVersion;
+    }
+
     bool BdIsBlankCode(const char* text)
     {
         for (const char* p = text; *p != 0; p++)
@@ -404,7 +418,8 @@ namespace
     }
 }
 
-static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend_seconds, const std::string& textureDirectory)
+static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend_seconds, const std::string& textureDirectory,
+    bool reportPresetName)
 {
     if (ctx == nullptr || path == nullptr || path[0] == '\0')
     {
@@ -452,6 +467,12 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
         return SV_ERR_PARSE;
     }
 
+    ctx->presetVersion = BdReadPresetVersion(nativePath);
+    if (reportPresetName)
+        ctx->presetName = BdWideToUtf8(ctx->state->m_szDesc);
+    else
+        ctx->presetName.clear();
+
     ctx->lastError = BdGlPreparePresetShaders(ctx, textureDirectory);
 
     if (ctx->gl != nullptr && !ctx->gl->ready)
@@ -466,9 +487,9 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
 extern "C" sv_status sv_load_preset(sv_context* ctx, const char* path, float blend_seconds)
 {
     if (path == nullptr)
-        return BdLoadPresetFrom(ctx, path, blend_seconds, std::string());
+        return BdLoadPresetFrom(ctx, path, blend_seconds, std::string(), true);
 
-    return BdLoadPresetFrom(ctx, path, blend_seconds, BdPresetDirectory(path));
+    return BdLoadPresetFrom(ctx, path, blend_seconds, BdPresetDirectory(path), true);
 }
 
 extern "C" sv_status sv_load_preset_memory(sv_context* ctx, const char* text, size_t len, float blend_seconds)
@@ -497,7 +518,7 @@ extern "C" sv_status sv_load_preset_memory(sv_context* ctx, const char* text, si
         return SV_ERR_IO;
     }
 
-    const sv_status status = BdLoadPresetFrom(ctx, tempPath.c_str(), blend_seconds, ctx->textureSearchPath);
+    const sv_status status = BdLoadPresetFrom(ctx, tempPath.c_str(), blend_seconds, ctx->textureSearchPath, false);
 
     remove(tempPath.c_str());
     return status;

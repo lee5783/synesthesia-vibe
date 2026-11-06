@@ -148,6 +148,38 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     self.visualizerView.playbackRate = playbackRate;
 }
 
+- (void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    return self.visualizerView.debugInfoHandler;
+}
+
+- (void)setDebugInfoHandler:(void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
+{
+    self.visualizerView.debugInfoHandler = debugInfoHandler;
+}
+
+- (float)debugInterval
+{
+    return self.visualizerView.debugInterval;
+}
+
+- (void)setDebugInterval:(float)debugInterval
+{
+    VisualizerLog([NSString stringWithFormat:@"debug interval=%.3f", debugInterval]);
+    self.visualizerView.debugInterval = debugInterval;
+}
+
+- (BOOL)debugEnabled
+{
+    return self.visualizerView.debugEnabled;
+}
+
+- (void)setDebugEnabled:(BOOL)debugEnabled
+{
+    VisualizerLog([NSString stringWithFormat:@"debug enabled=%d", debugEnabled]);
+    self.visualizerView.debugEnabled = debugEnabled;
+}
+
 - (CGFloat)renderScale
 {
     return self.visualizerView.renderScale;

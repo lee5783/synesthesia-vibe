@@ -75,11 +75,11 @@ void        sv_push_pcm_float(sv_context* ctx, const float* interleaved, size_t 
 void        sv_push_pcm_s16(sv_context* ctx, const int16_t* interleaved, size_t frames, int channels);
 void        sv_get_audio_levels(sv_context* ctx, float* out_bass, float* out_mid, float* out_treb);
 
-/* sv_init_gl, sv_create, sv_load_preset*, sv_resize, sv_render_frame and sv_destroy must run on the thread whose GL context is current; width/height are backing pixels. */
+/* sv_init_gl, sv_create, sv_load_preset*, sv_resize, sv_render_frame, sv_set_debug_callback, sv_set_debug_interval and sv_destroy must run on the thread whose GL context is current; width/height are backing pixels. */
 void        sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo);
 void        sv_resize(sv_context* ctx, int width, int height);
 
-/* sv_pause makes sv_render_frame a no-op until sv_resume; resume continues the preset time without a jump or reset. */
+/* sv_pause makes sv_render_frame a no-op until sv_resume, except for the debug report; resume continues the preset time without a jump or reset. */
 void        sv_pause(sv_context* ctx);
 void        sv_resume(sv_context* ctx);
 
@@ -87,6 +87,36 @@ void        sv_set_playback_rate(sv_context* ctx, float rate);
 
 const char* sv_last_error(sv_context* ctx);
 void        sv_dump_frame_state(sv_context* ctx, const char* json_path);
+
+/* Periodic diagnostics report, filled by the engine. It and its strings are borrowed: valid only for the duration of the callback, so copy what you keep. */
+typedef struct sv_debug_info
+{
+    double   time;                /* the preset-visible time variable, in simulation seconds */
+    uint32_t frame;               /* the preset frame counter, cumulative across preset loads; sv_dump_frame_state reports frame - 1 */
+    float    display_fps;         /* sv_render_frame calls per wall second, measured over the report window */
+    float    sim_steps_per_frame; /* simulation steps per sv_render_frame call over the report window; 1 on deterministic contexts, 0 while paused */
+    float    playback_rate;       /* the effective rate: 1 on deterministic contexts */
+    int      preset_version;      /* MILKDROP_PRESET_VERSION of the current (incoming, while blending) preset; 0 before any load */
+    int      warp_shader;         /* 1 = warp pixel shader active, 0 = fixed-function or no GL */
+    int      comp_shader;         /* 1 = composite pixel shader active, 0 = fixed-function or no GL */
+    float    bass, mid, treb, bass_att, mid_att, treb_att;
+    int      texsize_x, texsize_y, width, height;
+    int      feedback_format;     /* 0 = RGBA8 */
+    int      gl_errors;           /* GL errors drained since the previous report; process-wide; 0 with no GL */
+    int      limiter_active;      /* 1 = luminance limiter configured on; 0 = off or no GL */
+    const char* preset_name;      /* the preset file name without its extension; "" before any load and for sv_load_preset_memory */
+    const char* last_error;       /* same as sv_last_error */
+} sv_debug_info;
+
+/* Runs synchronously inside sv_render_frame, on the thread that calls it, once the report interval has elapsed in wall-clock time; it also runs while paused if the host keeps calling sv_render_frame.
+   It may call sv_set_debug_callback, sv_set_debug_interval, sv_get_audio_levels and sv_last_error. It must not call sv_destroy, sv_load_preset*, sv_pause, sv_resume, sv_resize, sv_render_frame or sv_dump_frame_state. */
+typedef void (*sv_debug_fn)(const sv_debug_info* info, void* user);
+
+/* Off by default. NULL disables. Takes effect on the next sv_render_frame and restarts the report window. */
+void        sv_set_debug_callback(sv_context* ctx, sv_debug_fn fn, void* user);
+/* Default 1.0 seconds; <= 0 disables; a non-finite value means 1.0. Restarts the report window. An interval shorter than a frame reports once per sv_render_frame while frames are under 1 second apart.
+   sv_resume and a gap between sv_render_frame calls longer than both the interval and 1 second also restart the window, without a report. */
+void        sv_set_debug_interval(sv_context* ctx, float seconds);
 
 #ifdef __cplusplus
 }

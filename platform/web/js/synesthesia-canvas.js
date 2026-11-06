@@ -17,6 +17,7 @@ const MS_PER_SECOND = 1000;
 const MIN_MAX_FPS = 1;
 const DEADLINE_TOLERANCE = 0.2;
 const DEFAULT_PLAYBACK_RATE = 1;
+const DEFAULT_DEBUG_INTERVAL = 1;
 
 export class SynesthesiaCanvas {
 
@@ -36,6 +37,8 @@ export class SynesthesiaCanvas {
     #nextDeadlineMs = 0;
     #paused = false;
     #playbackRate = DEFAULT_PLAYBACK_RATE;
+    #onDebugInfo = null;
+    #debugInterval = null;
     #hidden = false;
     #lost = false;
     #closed = false;
@@ -95,6 +98,31 @@ export class SynesthesiaCanvas {
 
         if (this.#context !== null)
             this.#context.setPlaybackRate(rate);
+    }
+
+    get onDebugInfo() {
+        return this.#onDebugInfo;
+    }
+
+    set onDebugInfo(handler) {
+        if (handler !== null && handler !== undefined && typeof handler !== "function")
+            throw new TypeError("onDebugInfo takes a function or null");
+
+        this.#onDebugInfo = handler ?? null;
+
+        if (this.#context !== null)
+            this.#context.onDebugInfo = this.#onDebugInfo;
+    }
+
+    get debugInterval() {
+        return this.#debugInterval ?? DEFAULT_DEBUG_INTERVAL;
+    }
+
+    setDebugInterval(seconds) {
+        this.#debugInterval = seconds;
+
+        if (this.#context !== null)
+            this.#context.setDebugInterval(seconds);
     }
 
     get isContextLost() {
@@ -159,6 +187,13 @@ export class SynesthesiaCanvas {
             context.pause();
 
         context.setPlaybackRate(this.#playbackRate);
+
+        if (this.#debugInterval !== null)
+            context.setDebugInterval(this.#debugInterval);
+
+        if (this.#onDebugInfo !== null)
+            context.onDebugInfo = this.#onDebugInfo;
+
         this.#context = context;
         this.#lastFrameMs = 0;
 
