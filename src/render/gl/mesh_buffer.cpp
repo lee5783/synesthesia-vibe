@@ -34,8 +34,7 @@ constexpr int kColorComponents = GL_BGRA;
 }
 
 MeshBuffer::MeshBuffer()
-    : m_vertexCapacity(0)
-    , m_indexCapacity(0)
+    : m_indexCapacity(0)
 {
 }
 
@@ -73,7 +72,6 @@ bool MeshBuffer::Create()
 void MeshBuffer::Destroy()
 {
     m_array.Destroy();
-    m_vertexCapacity = 0;
     m_indexCapacity = 0;
 }
 
@@ -85,15 +83,7 @@ bool MeshBuffer::UploadVertices(const void* data, int vertexCount)
     m_array.Bind();
     glBindBuffer(GL_ARRAY_BUFFER, m_array.VertexBufferId());
 
-    if (vertexCount > m_vertexCapacity)
-    {
-        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertexCount) * kVertexStride, data, GL_DYNAMIC_DRAW);
-        m_vertexCapacity = vertexCount;
-    }
-    else
-    {
-        glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(vertexCount) * kVertexStride, data);
-    }
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertexCount) * kVertexStride, data, GL_STREAM_DRAW);
 
     return CheckGlError("MeshBuffer::UploadVertices");
 }

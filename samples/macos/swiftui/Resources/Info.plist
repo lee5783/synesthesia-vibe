@@ -22,6 +22,10 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.entertainment</string>
+	<key>NSAccentColorName</key>
+	<string>AccentColor</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>SynesthesiaVibe visualizes system audio when the System audio source is selected.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>

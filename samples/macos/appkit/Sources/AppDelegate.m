@@ -55,6 +55,9 @@
     NSMenuItem *fullScreenItem = [viewMenu addItemWithTitle:@"Enter Full Screen" action:@selector(toggleFullScreen:) keyEquivalent:@"f"];
     fullScreenItem.keyEquivalentModifierMask = NSEventModifierFlagControl | NSEventModifierFlagCommand;
 
+    NSMenuItem *debugItem = [viewMenu addItemWithTitle:@"Debug Overlay" action:@selector(toggleDebugOverlay:) keyEquivalent:@"d"];
+    debugItem.keyEquivalentModifierMask = NSEventModifierFlagShift | NSEventModifierFlagCommand;
+
     NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
     [windowMenu addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
     [windowMenu addItemWithTitle:@"Close" action:@selector(performClose:) keyEquivalent:@"w"];

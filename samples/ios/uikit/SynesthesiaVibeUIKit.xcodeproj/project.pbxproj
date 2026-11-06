@@ -9,21 +9,45 @@
 /* Begin PBXBuildFile section */
 		06FD645F4DC716F7C5D35CDD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D0ECFE99ACFA5E039CC177 /* AppDelegate.swift */; };
 		093AA7E5CC5E63F6B301CA76 /* VisualizerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB163D92BBBB721018342A6 /* VisualizerViewController.swift */; };
+		0F4EBB66F5B50A4CDA660CFC /* SelectionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635A6345A24D2F8BCADAD47B /* SelectionViewController.swift */; };
+		147BC42219C1077284EB57E6 /* SettingsCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03871D0FEE014083C8C09F28 /* SettingsCell.swift */; };
+		16183502377E11202971C1E7 /* VisualizerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48CF72EDD59CE2F0E3EE407E /* VisualizerSession.swift */; };
 		20EC7EFFA28045C98D4E5EC9 /* PresetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C1987BE9AD9BF70EB53E1B /* PresetLibrary.swift */; };
+		3E03C3E6B8432014F1328F4C /* OverlayControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34D6D5FC1970689EBD202019 /* OverlayControls.swift */; };
 		3EC2C6A9764E7B0DF75424D9 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1348D24811225487EDA70EC8 /* SceneDelegate.swift */; };
+		487E733E8B4392BF3B89BCCB /* PresetListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41743220277881959C5FFC5F /* PresetListViewController.swift */; };
+		5671A728E0B0E90BC190B131 /* GLVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5507487AD5FB15397BED4FD /* GLVersion.swift */; };
+		64041CEED2E89B4598BF6C01 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE9590C0202A59571F6F680 /* DesignTokens.swift */; };
 		8893A13F418170B3EB821566 /* SynesthesiaVibe in Frameworks */ = {isa = PBXBuildFile; productRef = 4F73C6D05A34DF4028F3FA0D /* SynesthesiaVibe */; };
+		8C08394CE530C978C3030E06 /* NowPlayingBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AFAE8984339111D2D35A374 /* NowPlayingBar.swift */; };
+		95F24E76425EDA96BD2C437D /* FolderPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C812E36EAA149580F7608AB7 /* FolderPicker.swift */; };
+		B98828F25311FAD3788D585E /* FullScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E94F1A7E8985885FCDE9C813 /* FullScreenViewController.swift */; };
+		C7D536CB88529132E252CF82 /* StageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B102B34DB456EB045E241A /* StageView.swift */; };
 		CF2E848E392A0DC1F6B41FEA /* CaptureRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC58D0734009AC844808AB95 /* CaptureRequest.swift */; };
 		E9685E273648B644263A2E91 /* CaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FBD30220C4FF8DB0BE168AA /* CaptureViewController.swift */; };
+		F89D38D78B153138074D5098 /* DebugCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EE1413A0C61D9BA3ECE897 /* DebugCardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		03871D0FEE014083C8C09F28 /* SettingsCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCell.swift; sourceTree = "<group>"; };
+		06B102B34DB456EB045E241A /* StageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageView.swift; sourceTree = "<group>"; };
+		0AFAE8984339111D2D35A374 /* NowPlayingBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingBar.swift; sourceTree = "<group>"; };
 		1348D24811225487EDA70EC8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		16EE1413A0C61D9BA3ECE897 /* DebugCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugCardView.swift; sourceTree = "<group>"; };
+		34D6D5FC1970689EBD202019 /* OverlayControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayControls.swift; sourceTree = "<group>"; };
+		3DE9590C0202A59571F6F680 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
+		41743220277881959C5FFC5F /* PresetListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetListViewController.swift; sourceTree = "<group>"; };
+		48CF72EDD59CE2F0E3EE407E /* VisualizerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerSession.swift; sourceTree = "<group>"; };
 		4BB163D92BBBB721018342A6 /* VisualizerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerViewController.swift; sourceTree = "<group>"; };
+		635A6345A24D2F8BCADAD47B /* SelectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionViewController.swift; sourceTree = "<group>"; };
 		6FBD30220C4FF8DB0BE168AA /* CaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewController.swift; sourceTree = "<group>"; };
 		7D8ADD4A09654F198E63850E /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
 		90C1987BE9AD9BF70EB53E1B /* PresetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetLibrary.swift; sourceTree = "<group>"; };
 		AC58D0734009AC844808AB95 /* CaptureRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRequest.swift; sourceTree = "<group>"; };
 		B1D0ECFE99ACFA5E039CC177 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C812E36EAA149580F7608AB7 /* FolderPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPicker.swift; sourceTree = "<group>"; };
+		D5507487AD5FB15397BED4FD /* GLVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLVersion.swift; sourceTree = "<group>"; };
+		E94F1A7E8985885FCDE9C813 /* FullScreenViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullScreenViewController.swift; sourceTree = "<group>"; };
 		F5686803F141346F8EDB3FB0 /* SynesthesiaVibeUIKit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SynesthesiaVibeUIKit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -45,8 +69,20 @@
 				B1D0ECFE99ACFA5E039CC177 /* AppDelegate.swift */,
 				AC58D0734009AC844808AB95 /* CaptureRequest.swift */,
 				6FBD30220C4FF8DB0BE168AA /* CaptureViewController.swift */,
+				16EE1413A0C61D9BA3ECE897 /* DebugCardView.swift */,
+				3DE9590C0202A59571F6F680 /* DesignTokens.swift */,
+				C812E36EAA149580F7608AB7 /* FolderPicker.swift */,
+				E94F1A7E8985885FCDE9C813 /* FullScreenViewController.swift */,
+				D5507487AD5FB15397BED4FD /* GLVersion.swift */,
+				0AFAE8984339111D2D35A374 /* NowPlayingBar.swift */,
+				34D6D5FC1970689EBD202019 /* OverlayControls.swift */,
 				90C1987BE9AD9BF70EB53E1B /* PresetLibrary.swift */,
+				41743220277881959C5FFC5F /* PresetListViewController.swift */,
 				1348D24811225487EDA70EC8 /* SceneDelegate.swift */,
+				635A6345A24D2F8BCADAD47B /* SelectionViewController.swift */,
+				03871D0FEE014083C8C09F28 /* SettingsCell.swift */,
+				06B102B34DB456EB045E241A /* StageView.swift */,
+				48CF72EDD59CE2F0E3EE407E /* VisualizerSession.swift */,
 				4BB163D92BBBB721018342A6 /* VisualizerViewController.swift */,
 			);
 			path = Sources;
@@ -171,8 +207,20 @@
 				06FD645F4DC716F7C5D35CDD /* AppDelegate.swift in Sources */,
 				CF2E848E392A0DC1F6B41FEA /* CaptureRequest.swift in Sources */,
 				E9685E273648B644263A2E91 /* CaptureViewController.swift in Sources */,
+				F89D38D78B153138074D5098 /* DebugCardView.swift in Sources */,
+				64041CEED2E89B4598BF6C01 /* DesignTokens.swift in Sources */,
+				95F24E76425EDA96BD2C437D /* FolderPicker.swift in Sources */,
+				B98828F25311FAD3788D585E /* FullScreenViewController.swift in Sources */,
+				5671A728E0B0E90BC190B131 /* GLVersion.swift in Sources */,
+				8C08394CE530C978C3030E06 /* NowPlayingBar.swift in Sources */,
+				3E03C3E6B8432014F1328F4C /* OverlayControls.swift in Sources */,
 				20EC7EFFA28045C98D4E5EC9 /* PresetLibrary.swift in Sources */,
+				487E733E8B4392BF3B89BCCB /* PresetListViewController.swift in Sources */,
 				3EC2C6A9764E7B0DF75424D9 /* SceneDelegate.swift in Sources */,
+				0F4EBB66F5B50A4CDA660CFC /* SelectionViewController.swift in Sources */,
+				147BC42219C1077284EB57E6 /* SettingsCell.swift in Sources */,
+				C7D536CB88529132E252CF82 /* StageView.swift in Sources */,
+				16183502377E11202971C1E7 /* VisualizerSession.swift in Sources */,
 				093AA7E5CC5E63F6B301CA76 /* VisualizerViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

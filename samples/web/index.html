@@ -17,67 +17,217 @@
     <script type="module" src="./main.js"></script>
 </head>
 <body>
-    <canvas id="visualizer" aria-label="Visualizer"></canvas>
+    <div id="app">
+        <header>
+            <span class="logo" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"></path></svg>
+            </span>
+            <span class="wordmark">SynesthesiaVibe</span>
+            <span class="badge">Demo</span>
+            <span class="tagline">WebGL2 &middot; WebAssembly</span>
+            <span class="spacer"></span>
+            <a class="link" href="https://github.com/lee5783/synesthesia-vibe">View on GitHub</a>
+        </header>
+
+        <main>
+            <aside class="playlist" aria-label="Playlist">
+                <div class="aside-head">
+                    <div class="aside-title">
+                        <h2>Playlist</h2>
+                        <span class="meta" id="preset-count">0 presets</span>
+                    </div>
+                    <div class="folder-row">
+                        <span class="folder-field">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>
+                            <span id="folder-name" class="folder-name">mvp-presets</span>
+                        </span>
+                        <button id="choose-folder" class="btn" type="button" aria-label="Choose presets folder">Choose&hellip;</button>
+                        <input id="folder-input" type="file" webkitdirectory multiple hidden>
+                    </div>
+                </div>
+                <ol id="playlist" class="rows"></ol>
+            </aside>
+
+            <section id="visualizer-section" class="visualizer" aria-label="Visualizer">
+                <div class="stage">
+                    <canvas id="visualizer" aria-label="Visualizer output, SynesthesiaCanvas"></canvas>
+
+                    <span class="pill">
+                        <span class="dot" id="status-dot" aria-hidden="true"></span><span id="status-text">Loading&hellip;</span>
+                    </span>
+
+                    <button id="debug-button" class="overlay-btn bug" type="button" aria-label="Debug overlay" aria-pressed="false">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="13" rx="4"></rect><path d="M12 11v8"></path><path d="M4 13h4"></path><path d="M16 13h4"></path><path d="M5 7l3 2"></path><path d="M19 7l-3 2"></path><path d="M5 19l3-2"></path><path d="M19 19l-3-2"></path></svg>
+                    </button>
+
+                    <button id="fullscreen-button" class="overlay-btn" type="button" aria-label="Enter full screen">
+                        <span class="enter-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path></svg>
+                        </span>
+                        <span class="exit-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4"></path><path d="M15 4v5h5"></path><path d="M9 20v-5H4"></path><path d="M15 20v-5h5"></path></svg>
+                        </span>
+                    </button>
+
+                    <div id="debug-card" class="debug-card" role="status" aria-label="Debug overlay" hidden>
+                        <div class="debug-head">
+                            <span id="debug-fps" class="debug-fps">--</span>
+                            <span class="debug-meta">fps &middot; cap <span id="debug-cap">--</span></span>
+                            <span class="spacer"></span>
+                            <span class="debug-meta"><span id="debug-ms">--</span> ms</span>
+                        </div>
+                        <div class="debug-grid">
+                            <span class="debug-label">preset</span><span id="debug-preset" class="debug-value"></span>
+                            <span class="debug-label">size</span><span id="debug-size" class="debug-value"></span>
+                            <span class="debug-label">gl</span><span id="debug-gl" class="debug-value"></span>
+                            <span class="debug-label">audio</span><span id="debug-audio" class="debug-value"></span>
+                            <span class="debug-label">rate</span><span id="debug-rate" class="debug-value"></span>
+                            <span class="debug-label">auto</span><span id="debug-auto" class="debug-value"></span>
+                            <span class="debug-label" id="debug-error-label" hidden>last_error</span><span id="debug-error" class="debug-value debug-danger" hidden></span>
+                        </div>
+                        <div class="debug-bars">
+                            <div class="debug-bar"><span class="debug-bar-label">bass</span><span class="debug-track"><span id="debug-bass" class="debug-fill bass"></span></span></div>
+                            <div class="debug-bar"><span class="debug-bar-label">mid</span><span class="debug-track"><span id="debug-mid" class="debug-fill mid"></span></span></div>
+                            <div class="debug-bar"><span class="debug-bar-label">treb</span><span class="debug-track"><span id="debug-treble" class="debug-fill treb"></span></span></div>
+                        </div>
+                    </div>
+
+                    <div id="load-panel" class="load-panel">
+                        <p id="load-status" class="load-status">Loading the module&hellip;</p>
+                        <progress id="load-progress" max="1" value="0"></progress>
+                    </div>
+                </div>
+
+                <div class="transport">
+                    <button id="previous-preset" class="transport-btn" type="button" aria-label="Previous preset">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6l-8 6 8 6V6z"></path><path d="M6 6v12"></path></svg>
+                    </button>
+                    <button id="play-button" class="play-btn" type="button" aria-label="Pause">
+                        <span class="pause-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14"></path><path d="M16 5v14"></path></svg>
+                        </span>
+                        <span class="play-icon" hidden>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5l12 7-12 7V5z"></path></svg>
+                        </span>
+                    </button>
+                    <button id="next-preset" class="transport-btn" type="button" aria-label="Next preset">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l8 6-8 6V6z"></path><path d="M18 6v12"></path></svg>
+                    </button>
+                    <div class="now-playing">
+                        <div id="now-playing" class="now-title"></div>
+                        <div id="now-subtitle" class="now-subtitle">Preset 0 of 0 &middot; Auto-change off</div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="settings" aria-label="Settings">
+                <h2>Settings</h2>
+
+                <div class="group">
+                    <div class="row-control">
+                        <span class="control-text" id="auto-change-label">
+                            <span class="control-title">Auto-change presets</span>
+                            <span class="control-hint">Moves to the next preset in the playlist</span>
+                        </span>
+                        <button id="auto-change" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="auto-change-label">
+                            <span class="knob" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                    <div class="row-control interval-row" id="interval-row">
+                        <label class="control-label" for="interval">Change every</label>
+                        <select id="interval" class="select interval-select">
+                            <option value="10">10 seconds</option>
+                            <option value="15">15 seconds</option>
+                            <option value="30" selected>30 seconds</option>
+                            <option value="60">1 minute</option>
+                            <option value="120">2 minutes</option>
+                            <option value="300">5 minutes</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <fieldset class="source-group">
+                    <legend>Sound source</legend>
+                    <div class="source-list" id="source-list">
+                        <label class="source-row" id="row-none">
+                            <input type="radio" name="source" id="source-none" value="none">
+                            <span class="control-text">
+                                <span class="control-title">None</span>
+                                <span class="control-hint" id="hint-none">Presets animate without audio</span>
+                            </span>
+                        </label>
+                        <label class="source-row" id="row-wav">
+                            <input type="radio" name="source" id="source-wav" value="wav">
+                            <span class="control-text">
+                                <span class="control-title">Bundled WAV</span>
+                                <span class="control-hint" id="hint-wav">Loops the sample track that ships with the demo</span>
+                            </span>
+                        </label>
+                        <label class="source-row" id="row-microphone">
+                            <input type="radio" name="source" id="source-microphone" value="microphone">
+                            <span class="control-text">
+                                <span class="control-title">Microphone</span>
+                                <span class="control-hint" id="hint-microphone">Live input from your mic</span>
+                            </span>
+                        </label>
+                        <label class="source-row" id="row-system">
+                            <input type="radio" name="source" id="source-system" value="system">
+                            <span class="control-text">
+                                <span class="control-title">System sound</span>
+                                <span class="control-hint" id="hint-system">Audio from a shared tab or screen</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="callout" id="permission-callout" role="status" hidden>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+                        <span id="permission-text"></span>
+                    </div>
+                </fieldset>
+
+                <div class="group">
+                    <label class="control-label" for="fps">Frame rate</label>
+                    <select id="fps" class="select">
+                        <option value="30">30 fps</option>
+                        <option value="60" selected>60 fps</option>
+                        <option value="120">120 fps</option>
+                        <option value="0">Uncapped</option>
+                    </select>
+                    <span class="control-hint">Caps rendering only; animation speed stays the same. Changing it restarts the visualizer.</span>
+                </div>
+
+                <div class="group">
+                    <label class="control-label" for="transition">Transition</label>
+                    <select id="transition" class="select">
+                        <option value="blend">Blend</option>
+                    </select>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="row-control">
+                    <span class="control-text" id="debug-label">
+                        <span class="control-title">Debug overlay</span>
+                        <span class="control-hint">FPS, frame time, audio levels and preset info over the visualization, in full screen too</span>
+                    </span>
+                    <button id="debug-switch" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="debug-label">
+                        <span class="knob" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </aside>
+        </main>
+    </div>
 
     <div id="error-banner" class="error-banner" role="alert" hidden>
         <span id="error-text"></span>
         <button id="error-dismiss" type="button" aria-label="Dismiss error">Dismiss</button>
     </div>
 
-    <div id="overlay" class="overlay">
-        <div class="panel">
-            <h1>SynesthesiaVibe</h1>
-            <p id="load-status" class="load-status">Loading the module…</p>
-            <progress id="load-progress" max="1" value="0"></progress>
-            <button id="start-button" type="button" disabled>Start</button>
-            <p class="hint">Start resumes audio. Arrow keys switch presets, F toggles fullscreen.</p>
-        </div>
-    </div>
-
-    <div id="toolbar" class="toolbar" hidden>
-        <div class="group">
-            <button id="previous-preset" type="button" aria-label="Previous preset">&#9664;</button>
-            <select id="preset-select" aria-label="Preset"></select>
-            <button id="next-preset" type="button" aria-label="Next preset">&#9654;</button>
-            <button id="load-milk" type="button">Load .milk…</button>
-        </div>
-        <div class="group">
-            <label for="source-select">Audio</label>
-            <select id="source-select">
-                <option value="wav">Deterministic WAV</option>
-                <option value="microphone">Microphone</option>
-                <option value="file">Audio file…</option>
-                <option value="tab">Tab audio</option>
-            </select>
-            <button id="fullscreen-button" type="button">Fullscreen</button>
-        </div>
-        <div class="group">
-            <button id="debug-toggle" type="button" aria-pressed="false">Debug info: off</button>
-            <label for="debug-interval">Every</label>
-            <select id="debug-interval">
-                <option value="0.5">0.5 s</option>
-                <option value="1" selected>1 s</option>
-                <option value="2">2 s</option>
-            </select>
-        </div>
-        <div class="meters">
-            <div class="meter"><span>bass</span><div class="bar"><div id="meter-bass"></div></div><output id="value-bass">0.00</output></div>
-            <div class="meter"><span>mid</span><div class="bar"><div id="meter-mid"></div></div><output id="value-mid">0.00</output></div>
-            <div class="meter"><span>treb</span><div class="bar"><div id="meter-treble"></div></div><output id="value-treble">0.00</output></div>
-        </div>
-        <p id="status-line" class="status-line"></p>
-    </div>
-
-    <pre id="debug-info" class="debug-info" hidden></pre>
-
     <div id="capture-panel" class="capture-panel" hidden>
         <h1>Capture</h1>
-        <p id="capture-status" class="capture-status">Starting…</p>
+        <p id="capture-status" class="capture-status">Starting&hellip;</p>
         <ul id="capture-files"></ul>
     </div>
-
-    <input id="milk-input" type="file" accept=".milk" hidden>
-    <input id="audio-input" type="file" accept="audio/*" hidden>
-    <audio id="audio-player" loop hidden></audio>
 </body>
 </html>

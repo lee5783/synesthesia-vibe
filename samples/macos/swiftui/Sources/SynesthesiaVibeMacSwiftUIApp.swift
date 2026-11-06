@@ -21,12 +21,20 @@ enum SynesthesiaVibeMacSwiftUIMain {
 
 struct SynesthesiaVibeMacSwiftUIApp: App {
 
-    private let library = PresetLibrary(bundle: .main)
+    @StateObject private var model = VisualizerModel(library: PresetLibrary(bundle: .main))
 
     var body: some Scene {
         Window("SynesthesiaVibe SwiftUI", id: "visualizer") {
-            VisualizerRootView(library: library)
+            VisualizerRootView(model: model)
         }
-        .defaultSize(width: 1024, height: 640)
+        .defaultSize(width: 1180, height: 760)
+        .commands {
+            CommandGroup(after: .toolbar) {
+                Button(model.debugOverlayOn ? "Hide Debug Overlay" : "Show Debug Overlay") {
+                    model.toggleDebugOverlay()
+                }
+                .keyboardShortcut("d", modifiers: [.shift, .command])
+            }
+        }
     }
 }

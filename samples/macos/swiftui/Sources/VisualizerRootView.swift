@@ -10,17 +10,11 @@ import SynesthesiaVibe
 
 struct VisualizerRootView: View {
 
-    let library: PresetLibrary
-    @StateObject private var player: SynesthesiaPlayer
-
-    init(library: PresetLibrary) {
-        self.library = library
-        let configuration = SVContextConfiguration()
-        configuration.resourceURL = library.resourceURL
-        _player = StateObject(wrappedValue: SynesthesiaPlayer(configuration: configuration))
-    }
+    @ObservedObject var model: VisualizerModel
 
     var body: some View {
-        VisualizerScreen(library: library, player: player)
+        VisualizerScreen(model: model)
+            .preferredColorScheme(.dark)
+            .tint(Color.svAccentPrimary)
     }
 }

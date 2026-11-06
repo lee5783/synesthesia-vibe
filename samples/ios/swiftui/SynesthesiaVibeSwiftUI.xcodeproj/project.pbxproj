@@ -7,27 +7,33 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06455D7A9303907804B3E774 /* VisualizerCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950BB2C59CE23B2F5B4E0EE2 /* VisualizerCanvas.swift */; };
 		233189DBE4EF49F597330EEA /* SynesthesiaVibe in Frameworks */ = {isa = PBXBuildFile; productRef = FC7AB299C80321F37636BF6C /* SynesthesiaVibe */; };
+		36075BE268586820227E2F79 /* DebugCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EA285D9E0DA6683519C6480 /* DebugCard.swift */; };
 		4D04974830B89D650D5C95D7 /* CaptureScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC78B338D4E879D38EC1119A /* CaptureScreen.swift */; };
-		6AB6A45C34EEA42C5B51B76C /* PlayerStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ECA1AA411B54850DF0A52EF /* PlayerStatusView.swift */; };
+		65A5825A6984487094F5B249 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA8455387F2FC7BC8DF81437 /* DesignTokens.swift */; };
 		99100461D4769C859CA23620 /* SynesthesiaVibeSwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F3E9844BED655A76065844 /* SynesthesiaVibeSwiftUIApp.swift */; };
 		A0FE2B4DE23FCC940F446928 /* CaptureRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4D493B45D06EE1361E7D67 /* CaptureRunner.swift */; };
 		B2A767167596E1B472E77C0D /* PresetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */; };
 		C612DA5F650B13DF1B62DF38 /* VisualizerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */; };
 		D7EF179428AA508F92C8FDF5 /* CaptureRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832437F3844A824D917C1765 /* CaptureRequest.swift */; };
+		EC4DE008D6F419F944E6CDB5 /* VisualizerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13E6669BD6DCE52979C61C9 /* VisualizerStore.swift */; };
 		F73825831250DD36E4FE9896 /* VisualizerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC8BAADE0C421C58C727A9A6 /* VisualizerScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0EA285D9E0DA6683519C6480 /* DebugCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugCard.swift; sourceTree = "<group>"; };
 		13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerRootView.swift; sourceTree = "<group>"; };
 		2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetLibrary.swift; sourceTree = "<group>"; };
 		6C9610ABC384972D72FCA20D /* SynesthesiaVibeSwiftUI.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SynesthesiaVibeSwiftUI.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		7ECA1AA411B54850DF0A52EF /* PlayerStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStatusView.swift; sourceTree = "<group>"; };
 		832437F3844A824D917C1765 /* CaptureRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRequest.swift; sourceTree = "<group>"; };
 		8D0F395F59A9C43C0B8A5F37 /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
+		950BB2C59CE23B2F5B4E0EE2 /* VisualizerCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerCanvas.swift; sourceTree = "<group>"; };
 		A2F3E9844BED655A76065844 /* SynesthesiaVibeSwiftUIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynesthesiaVibeSwiftUIApp.swift; sourceTree = "<group>"; };
 		AC4D493B45D06EE1361E7D67 /* CaptureRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRunner.swift; sourceTree = "<group>"; };
+		D13E6669BD6DCE52979C61C9 /* VisualizerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerStore.swift; sourceTree = "<group>"; };
 		DC78B338D4E879D38EC1119A /* CaptureScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureScreen.swift; sourceTree = "<group>"; };
+		EA8455387F2FC7BC8DF81437 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		FC8BAADE0C421C58C727A9A6 /* VisualizerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -74,11 +80,14 @@
 				832437F3844A824D917C1765 /* CaptureRequest.swift */,
 				AC4D493B45D06EE1361E7D67 /* CaptureRunner.swift */,
 				DC78B338D4E879D38EC1119A /* CaptureScreen.swift */,
-				7ECA1AA411B54850DF0A52EF /* PlayerStatusView.swift */,
+				0EA285D9E0DA6683519C6480 /* DebugCard.swift */,
+				EA8455387F2FC7BC8DF81437 /* DesignTokens.swift */,
 				2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */,
 				A2F3E9844BED655A76065844 /* SynesthesiaVibeSwiftUIApp.swift */,
+				950BB2C59CE23B2F5B4E0EE2 /* VisualizerCanvas.swift */,
 				13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */,
 				FC8BAADE0C421C58C727A9A6 /* VisualizerScreen.swift */,
+				D13E6669BD6DCE52979C61C9 /* VisualizerStore.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -177,11 +186,14 @@
 				D7EF179428AA508F92C8FDF5 /* CaptureRequest.swift in Sources */,
 				A0FE2B4DE23FCC940F446928 /* CaptureRunner.swift in Sources */,
 				4D04974830B89D650D5C95D7 /* CaptureScreen.swift in Sources */,
-				6AB6A45C34EEA42C5B51B76C /* PlayerStatusView.swift in Sources */,
+				36075BE268586820227E2F79 /* DebugCard.swift in Sources */,
+				65A5825A6984487094F5B249 /* DesignTokens.swift in Sources */,
 				B2A767167596E1B472E77C0D /* PresetLibrary.swift in Sources */,
 				99100461D4769C859CA23620 /* SynesthesiaVibeSwiftUIApp.swift in Sources */,
+				06455D7A9303907804B3E774 /* VisualizerCanvas.swift in Sources */,
 				C612DA5F650B13DF1B62DF38 /* VisualizerRootView.swift in Sources */,
 				F73825831250DD36E4FE9896 /* VisualizerScreen.swift in Sources */,
+				EC4DE008D6F419F944E6CDB5 /* VisualizerStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

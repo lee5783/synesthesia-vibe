@@ -15,6 +15,9 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     @Published public var isPaused = false {
         didSet { view?.isPaused = isPaused }
     }
+    @Published public var preferredFramesPerSecond: Float {
+        didSet { view?.preferredFramesPerSecond = preferredFramesPerSecond }
+    }
     @Published public private(set) var lastError: Error?
     @Published public private(set) var levels = SVAudioLevels(bass: 0, mid: 0, treble: 0)
     @Published public private(set) var debugInfo: [String: Any]?
@@ -35,11 +38,12 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     private var pendingLoads: [PendingLoad] = []
     private var wavFeeder: SVWavFeeder?
     private var wavFrameRemainder = 0.0
-    private var audioInput: SVAudioInput?
-    private var wantsMicrophone = false
+    private var audioInput: (any LiveAudioInput)?
+    private var wantedSource: WantedSource = .none
 
     public init(configuration: SVContextConfiguration = SVContextConfiguration()) {
         self.configuration = configuration
+        self.preferredFramesPerSecond = configuration.maxFps
         super.init()
     }
 
@@ -47,6 +51,8 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         pendingLoads.forEach { $0.continuation.resume(throwing: CancellationError()) }
         audioInput?.stop()
     }
+
+    public static var isSystemAudioSupported: Bool { SVSystemAudioInput.isSupported }
 
     public func attach(to view: SVView) {
         guard self.view !== view else { return }
@@ -56,12 +62,22 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.configuration = configuration
         view.delegate = self
         view.isPaused = isPaused
+        view.preferredFramesPerSecond = preferredFramesPerSecond
         view.debugInterval = debugInterval
         view.debugEnabled = debugEnabled
         view.debugInfoHandler = { [weak self] info in
             self?.debugInfo = info
         }
         self.view = view
+        if let existing = view.context {
+            context = existing
+            guard wantedSource.isLiveInput, audioInput == nil else { return }
+            do {
+                try startAudioInput(with: existing)
+            } catch {
+                lastError = error
+            }
+        }
     }
 
     public func detach(from view: SVView) {
@@ -100,20 +116,28 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     public func playWav(at url: URL) throws {
         let feeder = try SVWavFeeder(url: url)
         stopAudio()
+        wantedSource = .wav
         wavFeeder = feeder
         wavFrameRemainder = 0
     }
 
     public func startMicrophone() throws {
         stopAudio()
-        wantsMicrophone = true
+        wantedSource = .microphone
+        guard let context else { return }
+        try startAudioInput(with: context)
+    }
+
+    public func startSystemAudio() throws {
+        stopAudio()
+        wantedSource = .systemAudio
         guard let context else { return }
         try startAudioInput(with: context)
     }
 
     public func stopAudio() {
         wavFeeder = nil
-        wantsMicrophone = false
+        wantedSource = .none
         audioInput?.stop()
         audioInput = nil
     }
@@ -156,9 +180,22 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     }
 
     private func startAudioInput(with context: SVContext) throws {
-        let input = SVAudioInput(context: context)
-        try input.start()
-        audioInput = input
+        switch wantedSource {
+        case .microphone:
+            let input = SVAudioInput(context: context)
+            try input.start()
+            audioInput = input
+        case .systemAudio:
+            guard let input = SVSystemAudioInput(context: context) else {
+                throw NSError(domain: SVErrorDomain,
+                              code: SVError.Code.argument.rawValue,
+                              userInfo: [NSLocalizedDescriptionKey: "system audio capture needs macOS 14.2 or later"])
+            }
+            try input.start()
+            audioInput = input
+        case .wav, .none:
+            break
+        }
     }
 
     private func feedWav(deltaTime: TimeInterval, into context: SVContext) {
@@ -177,7 +214,7 @@ extension SynesthesiaPlayer: SVViewDelegate {
     public func view(_ view: SVView, didCreateContext context: SVContext) {
         self.context = context
         performPendingLoads(with: context)
-        guard wantsMicrophone, audioInput == nil else { return }
+        guard wantedSource.isLiveInput, audioInput == nil else { return }
         do {
             try startAudioInput(with: context)
         } catch {
@@ -197,6 +234,29 @@ extension SynesthesiaPlayer: SVViewDelegate {
         lastError = error
         guard context == nil else { return }
         failPendingLoads(with: error)
+    }
+}
+
+private protocol LiveAudioInput: AnyObject {
+    func stop()
+}
+
+extension SVAudioInput: LiveAudioInput {}
+extension SVSystemAudioInput: LiveAudioInput {}
+
+private enum WantedSource {
+    case none
+    case wav
+    case microphone
+    case systemAudio
+
+    var isLiveInput: Bool {
+        switch self {
+        case .microphone, .systemAudio:
+            return true
+        case .wav, .none:
+            return false
+        }
     }
 }
 
