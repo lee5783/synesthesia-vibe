@@ -37,7 +37,6 @@ public:
 
 private:
     VertexArray m_array;
-    int m_vertexCapacity;
     int m_indexCapacity;
 };
 

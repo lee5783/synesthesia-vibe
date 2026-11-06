@@ -51,7 +51,7 @@ in the tables below.
 - **Frame-rate cap:** `sv_config.max_fps`. 0 means uncapped. The view loops pace rendering to it, and it
   is fixed when the context is created. The cap does not change animation speed.
 - **Playback rate:** `sv_set_playback_rate(ctx, rate)` sets the simulation speed at runtime. The rate is
-  clamped to [0.125, 8] and defaults to 1. Interactive contexts advance in fixed 1/60 s steps, so motion
+  clamped to [0.125, 8] and defaults to 1. Interactive contexts advance in steps of one display period (30 to 120 Hz), so motion
   looks the same at 30, 60 or 120 fps. Below 1× frames hold. Deterministic (capture) contexts ignore it.
 - **Luminance and flash limit:** `sv_config.max_luminance` (0 = off, otherwise a soft ceiling in (0, 1])
   and `sv_config.flash_limit` (0 = off, otherwise the largest rise in mean luminance per second). Both are
@@ -73,7 +73,7 @@ in the tables below.
 
 | Setting | Apple (Objective-C / Swift) | Android (Java) | Web (JavaScript) |
 |---|---|---|---|
-| Frame-rate cap | `SVContextConfiguration.maxFps` | `Builder.setMaxFps` | `config.maxFps` |
+| Frame-rate cap | `SVContextConfiguration.maxFps`, runtime `SVView.preferredFramesPerSecond` (Swift `SynesthesiaPlayer.preferredFramesPerSecond`) | `Builder.setMaxFps` | `config.maxFps` |
 | Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
 | Debug info | `SVContext` / `SVView` `debugInfoHandler`, `debugInterval`, `debugEnabled` (Swift `SynesthesiaPlayer.debugInfo`) | `SynesthesiaContext.setDebugListener`, `setDebugInterval`; `SynesthesiaRenderer.setDebugListener`, `setDebugInterval` | `SynesthesiaContext.onDebugInfo`, `setDebugInterval`; `SynesthesiaCanvas.onDebugInfo`, `setDebugInterval` |
@@ -98,6 +98,7 @@ in the tables below.
 - `-[SVViewDelegate view:didRenderFrameWithDeltaTime:]` is called after each frame and before it is
   presented.
 - The macOS view follows its window to another display and picks up that display's refresh rate.
+- Swift `SynesthesiaPlayer.startSystemAudio()` (check `isSystemAudioSupported`) drives the system-audio input; one player can use either input.
 - `SVAudioInput` and `SVSystemAudioInput` gain the following:
   - `inputGain`;
   - a `pcmHandler` block that receives the 44.1 kHz stereo PCM on the audio thread;
@@ -123,6 +124,7 @@ this repository's Releases page. Every file name carries the version `<v>`:
 | `synesthesia-vibe-web-<v>.zip` | Web library dist: `synesthesia-vibe-wasm.{js,wasm}`, the ES-module JavaScript API and a `VERSION` stamp |
 | `SHA256SUMS.txt` | sha256 of every other asset |
 
+- **Sample controls.** The samples share one design: a preset playlist, a source picker (WAV, microphone, system sound where supported), a frame-rate set of 30 / 60 / 120 / Uncapped (default 60) and a debug overlay (shift-cmd-D on macOS). They have no speed, render-scale, snapshot or WAV-export controls.
 - **The iOS samples run in the Simulator only.** They are not signed for a device. Install one with
   `xcrun simctl install booted <App>.app`.
 - **Gatekeeper blocks the first launch of a macOS sample**, because a downloaded app is quarantined and the

@@ -19,17 +19,40 @@ struct Preset: Hashable {
 struct PresetLibrary {
 
     let resourceURL: URL
+    let folderName: String
     let presets: [Preset]
     let capturePresets: [Preset]
     let defaultWavURL: URL?
 
+    var folderPath: String {
+        (resourceURL.path as NSString).abbreviatingWithTildeInPath
+    }
+
     init(bundle: Bundle) {
-        resourceURL = bundle.resourceURL ?? bundle.bundleURL
-        let ids = Self.captureSetIDs(at: resourceURL.appendingPathComponent("capture-set.json"))
-        presets = Self.presets(in: resourceURL.appendingPathComponent("presets", isDirectory: true), ids: [:])
-        capturePresets = Self.presets(in: resourceURL.appendingPathComponent("capture-presets", isDirectory: true), ids: ids)
+        let resourceURL = bundle.resourceURL ?? bundle.bundleURL
         let wavURL = resourceURL.appendingPathComponent("audio/deterministic-test.wav")
-        defaultWavURL = FileManager.default.fileExists(atPath: wavURL.path) ? wavURL : nil
+        self.init(resourceURL: resourceURL,
+                  folderName: "mvp-presets",
+                  presets: Self.presets(in: resourceURL.appendingPathComponent("presets", isDirectory: true), ids: [:]),
+                  capturePresets: Self.presets(in: resourceURL.appendingPathComponent("capture-presets", isDirectory: true),
+                                               ids: Self.captureSetIDs(at: resourceURL.appendingPathComponent("capture-set.json"))),
+                  defaultWavURL: FileManager.default.fileExists(atPath: wavURL.path) ? wavURL : nil)
+    }
+
+    init(folderURL: URL, defaultWavURL: URL?) {
+        self.init(resourceURL: folderURL,
+                  folderName: folderURL.lastPathComponent,
+                  presets: Self.presets(in: folderURL, ids: [:]),
+                  capturePresets: [],
+                  defaultWavURL: defaultWavURL)
+    }
+
+    private init(resourceURL: URL, folderName: String, presets: [Preset], capturePresets: [Preset], defaultWavURL: URL?) {
+        self.resourceURL = resourceURL
+        self.folderName = folderName
+        self.presets = presets
+        self.capturePresets = capturePresets
+        self.defaultWavURL = defaultWavURL
     }
 
     func capturePreset(matching key: String) -> Preset? {

@@ -24,10 +24,9 @@ targets:
         UILaunchScreen:
           UIColorName: ""
         UIRequiresFullScreen: true
+        CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: SynesthesiaVibe visualizes live microphone audio when the microphone source is selected.
         UIFileSharingEnabled: true
         UIApplicationSceneManifest:

@@ -16,12 +16,14 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import com.synesthesiavibe.AudioInput
 import kotlinx.coroutines.flow.filterNotNull
@@ -37,7 +39,10 @@ class MainActivity : ComponentActivity() {
     private val recordAudioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val action = pendingRecordAudio
         pendingRecordAudio = null
-        if (granted) action?.invoke() else Log.w(TAG, "RECORD_AUDIO denied")
+        if (granted) action?.invoke() else {
+            Log.w(TAG, "RECORD_AUDIO denied")
+            controller.reportError("Microphone permission denied")
+        }
     }
 
     private val projectionConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -79,35 +84,47 @@ class MainActivity : ComponentActivity() {
             ?: library.presets.first()
         val metrics = resources.displayMetrics
         controller = VisualizerController(
+            context = this,
             library = library,
             initialPreset = initialPreset,
             widthPixels = metrics.widthPixels,
             heightPixels = metrics.heightPixels,
             preserveEglContext = intent.getBooleanExtra(EXTRA_PRESERVE_EGL_CONTEXT, true),
-            maxFps = intent.getFloatExtra(EXTRA_MAX_FPS, 0f),
+            initialFps = intent.getFloatExtra(EXTRA_MAX_FPS, VisualizerController.FPS_DEFAULT),
             maxLuminance = intent.getFloatExtra(EXTRA_MAX_LUMINANCE, 0f),
             flashLimit = intent.getFloatExtra(EXTRA_FLASH_LIMIT, 0f),
-            playbackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, 1f),
+            initialPlaybackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, 1f),
             validatePath = intent.getStringExtra(EXTRA_VALIDATE)?.let(::File),
             validateText = intent.getStringExtra(EXTRA_VALIDATE_TEXT),
             temporaryDirectory = cacheDir,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) observeProjection()
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                VisualizerScreen(
-                    controller = controller,
-                    presets = library.presets,
-                    showsSystemAudio = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
-                    onSourceSelected = ::selectSource,
-                )
+            MaterialTheme(colorScheme = SvColors.Scheme) {
+                VisualizerApp()
             }
         }
+    }
+
+    @Composable
+    private fun VisualizerApp() {
+        val current = controller
+        val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            Log.i(TAG, "folder picker result: $uri")
+            if (uri != null) current.installFolder(uri)
+        }
+        SampleApp(
+            controller = current,
+            showsSystemAudio = current.showsSystemAudio,
+            onSourceSelected = { source -> selectSource(source) },
+            onPickFolder = { folderPicker.launch(null) },
+        )
     }
 
     private fun selectSource(source: AudioSource) {
         val leavesSystemAudio = controller.audioSource == AudioSource.SystemAudio && source != AudioSource.SystemAudio
         when (source) {
+            AudioSource.None -> controller.useNone()
             AudioSource.Wav -> controller.useWav()
             AudioSource.Microphone -> withRecordAudio(::startMicrophone)
             AudioSource.SystemAudio -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) withRecordAudio(::requestSystemAudio)

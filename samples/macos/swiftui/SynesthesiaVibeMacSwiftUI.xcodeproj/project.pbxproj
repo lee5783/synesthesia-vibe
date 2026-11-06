@@ -8,23 +8,37 @@
 
 /* Begin PBXBuildFile section */
 		00083D11D1E16A9B67A1C64B /* VisualizerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */; };
+		1C02FF06FCB55E0F8C593984 /* DebugOverlayCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D697302ECE78A693AD5850B /* DebugOverlayCard.swift */; };
 		2493B6B2BE1AF97E0404DA74 /* CaptureCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */; };
+		24CBB066DD1D7FE0934498F3 /* SVColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C894F56A8C01ED6A746E3F80 /* SVColorTokens.swift */; };
 		25C7A8B0D6ED338242941157 /* SynesthesiaVibeMacSwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */; };
-		785B99E6694A1935E7D5BBD9 /* PlayerStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F201B593D34E6AF29B27662C /* PlayerStatusView.swift */; };
+		5383EF12F8F3BF4F191335BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CCA2D17B336DB01593508772 /* Assets.xcassets */; };
+		56B9A59C36BC4E171ACFCB63 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 176C23C9FBEAD36630718A3F /* SidebarView.swift */; };
+		6547BEB99C67D0661BF34727 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D62E9B656F2A4150B983DD7 /* InspectorView.swift */; };
 		A249C03E58708AEEA6541032 /* PresetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */; };
+		AFD21BCD578DF60238755936 /* VisualizerOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D25916688955A6ECFFEA671 /* VisualizerOverlay.swift */; };
+		B463A4230970E0D5E58C060A /* VisualizerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033535D8C292AA8A36B94747 /* VisualizerModel.swift */; };
 		E2F5A9B3E84AD966F838B0B0 /* SynesthesiaVibe in Frameworks */ = {isa = PBXBuildFile; productRef = CB8929A396D78EF97C917681 /* SynesthesiaVibe */; };
 		FA0127C0D6B739E50F0147BA /* VisualizerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */; };
+		FDF9CF83AC15FAF7B9FBF966 /* AudioSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327B2DB52BA9FB9296E01267 /* AudioSource.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		033535D8C292AA8A36B94747 /* VisualizerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerModel.swift; sourceTree = "<group>"; };
 		150C8B6AFE7FEC1FB686C8AB /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
+		176C23C9FBEAD36630718A3F /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		1DA1B96D6E9E51BBBB97E8B5 /* SynesthesiaVibeMacSwiftUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SynesthesiaVibeMacSwiftUI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		327B2DB52BA9FB9296E01267 /* AudioSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSource.swift; sourceTree = "<group>"; };
+		4D697302ECE78A693AD5850B /* DebugOverlayCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayCard.swift; sourceTree = "<group>"; };
 		57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetLibrary.swift; sourceTree = "<group>"; };
+		5D25916688955A6ECFFEA671 /* VisualizerOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerOverlay.swift; sourceTree = "<group>"; };
 		719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynesthesiaVibeMacSwiftUIApp.swift; sourceTree = "<group>"; };
+		8D62E9B656F2A4150B983DD7 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerRootView.swift; sourceTree = "<group>"; };
 		B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCommand.swift; sourceTree = "<group>"; };
+		C894F56A8C01ED6A746E3F80 /* SVColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVColorTokens.swift; sourceTree = "<group>"; };
+		CCA2D17B336DB01593508772 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerScreen.swift; sourceTree = "<group>"; };
-		F201B593D34E6AF29B27662C /* PlayerStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStatusView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -47,6 +61,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		6C0FEEA375B4E267F212E898 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CCA2D17B336DB01593508772 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		7A13B5AE362D14128F4224BE /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -59,6 +81,7 @@
 			isa = PBXGroup;
 			children = (
 				7A13B5AE362D14128F4224BE /* Packages */,
+				6C0FEEA375B4E267F212E898 /* Resources */,
 				C6BE0BAADF2480EBEBE0E62E /* Sources */,
 				2EBFAC53F80F08AF45339268 /* Products */,
 			);
@@ -67,10 +90,16 @@
 		C6BE0BAADF2480EBEBE0E62E /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				327B2DB52BA9FB9296E01267 /* AudioSource.swift */,
 				B1EEF11C0707704BE9874BF4 /* CaptureCommand.swift */,
-				F201B593D34E6AF29B27662C /* PlayerStatusView.swift */,
+				4D697302ECE78A693AD5850B /* DebugOverlayCard.swift */,
+				8D62E9B656F2A4150B983DD7 /* InspectorView.swift */,
 				57B451C301A8DFCF3D0CCC47 /* PresetLibrary.swift */,
+				176C23C9FBEAD36630718A3F /* SidebarView.swift */,
+				C894F56A8C01ED6A746E3F80 /* SVColorTokens.swift */,
 				719876C847B3B66EDBCAFF8D /* SynesthesiaVibeMacSwiftUIApp.swift */,
+				033535D8C292AA8A36B94747 /* VisualizerModel.swift */,
+				5D25916688955A6ECFFEA671 /* VisualizerOverlay.swift */,
 				98A4A5B1D6800C5DE0393E5C /* VisualizerRootView.swift */,
 				CFF056CB0909048C3BD36D89 /* VisualizerScreen.swift */,
 			);
@@ -85,6 +114,7 @@
 			buildConfigurationList = EF1874C57145EBFB59AC856D /* Build configuration list for PBXNativeTarget "SynesthesiaVibeMacSwiftUI" */;
 			buildPhases = (
 				70D4F0E84DA6625F056A21B3 /* Sources */,
+				E462B97BC5A6355325D5DBFE /* Resources */,
 				B714BA5684BEA18E9B313B94 /* Frameworks */,
 				9ADCC0D2E7712454D7F1E8AD /* Bundle SynesthesiaVibe Resources */,
 			);
@@ -136,6 +166,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		E462B97BC5A6355325D5DBFE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5383EF12F8F3BF4F191335BB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXShellScriptBuildPhase section */
 		9ADCC0D2E7712454D7F1E8AD /* Bundle SynesthesiaVibe Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -168,10 +209,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FDF9CF83AC15FAF7B9FBF966 /* AudioSource.swift in Sources */,
 				2493B6B2BE1AF97E0404DA74 /* CaptureCommand.swift in Sources */,
-				785B99E6694A1935E7D5BBD9 /* PlayerStatusView.swift in Sources */,
+				1C02FF06FCB55E0F8C593984 /* DebugOverlayCard.swift in Sources */,
+				6547BEB99C67D0661BF34727 /* InspectorView.swift in Sources */,
 				A249C03E58708AEEA6541032 /* PresetLibrary.swift in Sources */,
+				24CBB066DD1D7FE0934498F3 /* SVColorTokens.swift in Sources */,
+				56B9A59C36BC4E171ACFCB63 /* SidebarView.swift in Sources */,
 				25C7A8B0D6ED338242941157 /* SynesthesiaVibeMacSwiftUIApp.swift in Sources */,
+				B463A4230970E0D5E58C060A /* VisualizerModel.swift in Sources */,
+				AFD21BCD578DF60238755936 /* VisualizerOverlay.swift in Sources */,
 				00083D11D1E16A9B67A1C64B /* VisualizerRootView.swift in Sources */,
 				FA0127C0D6B739E50F0147BA /* VisualizerScreen.swift in Sources */,
 			);
@@ -303,6 +350,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -326,6 +374,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;

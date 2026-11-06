@@ -438,23 +438,35 @@ namespace
         return std::min(std::max(now - previous, 0.0), kBeatdropMaxFrameDtSeconds);
     }
 
-    int BdTakeSimulationSteps(sv_context* ctx, double frameSeconds)
+    double BdSimulationStepSeconds(sv_context* ctx)
+    {
+        const double rate = std::round(static_cast<double>(ctx->displayFps));
+        return 1.0 / std::min(std::max(rate, kBeatdropMinSimulationRate), kBeatdropMaxSimulationRate);
+    }
+
+    int BdMaxSimulationSteps(sv_context* ctx)
+    {
+        const double rate = std::max(static_cast<double>(ctx->playbackRate), 1.0);
+        return static_cast<int>(std::ceil(kBeatdropMaxSimulationStepsPerFrame * rate));
+    }
+
+    int BdTakeSimulationSteps(sv_context* ctx, double frameSeconds, double stepSeconds)
     {
         ctx->stepAccumulator += frameSeconds * static_cast<double>(ctx->playbackRate);
 
-        int steps = static_cast<int>(ctx->stepAccumulator / kBeatdropSimulationStepSeconds);
+        int steps = static_cast<int>((ctx->stepAccumulator + kBeatdropSimulationStepTolerance * stepSeconds) / stepSeconds);
 
         if (ctx->frame == 0 && steps < 1)
             steps = 1;
 
-        if (steps > kBeatdropMaxSimulationStepsPerFrame)
+        const int maxSteps = BdMaxSimulationSteps(ctx);
+        if (steps > maxSteps)
         {
-            steps = kBeatdropMaxSimulationStepsPerFrame;
             ctx->stepAccumulator = 0.0;
-            return steps;
+            return maxSteps;
         }
 
-        ctx->stepAccumulator = std::max(ctx->stepAccumulator - steps * kBeatdropSimulationStepSeconds, 0.0);
+        ctx->stepAccumulator = std::max(ctx->stepAccumulator - steps * stepSeconds, -kBeatdropSimulationStepTolerance * stepSeconds);
         return steps;
     }
 
@@ -473,7 +485,9 @@ namespace
         const double frameSeconds = BdHostFrameSeconds(ctx, dt_seconds);
         BdUpdateDisplayFps(ctx, frameSeconds);
 
-        const int steps = BdTakeSimulationSteps(ctx, frameSeconds);
+        const double stepSeconds = BdSimulationStepSeconds(ctx);
+        const int steps = BdTakeSimulationSteps(ctx, frameSeconds, stepSeconds);
+        ctx->rawClock.SetTickDelta(std::llround(stepSeconds * kBeatdropTicksPerSecond));
 
         BdAnalyzeAudio(ctx, ctx->displayFps);
         BdGlBeginFrame(ctx);
@@ -571,7 +585,11 @@ extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t tar
         BdTickDebugInfo(ctx);
 
     if (ctx->paused)
+    {
+        if (!ctx->deterministic)
+            BdGlPresentFrame(ctx, target_fbo);
         return;
+    }
 
     ctx->lastFrameDt = dt_seconds;
     ctx->lastTargetFbo = target_fbo;

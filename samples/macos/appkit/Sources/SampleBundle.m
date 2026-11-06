@@ -27,7 +27,12 @@ static NSString *const SampleBundleCaptureSetName = @"capture-set.json";
 
 + (NSArray<NSURL *> *)presetURLs
 {
-    NSArray<NSURL *> *contents = [NSFileManager.defaultManager contentsOfDirectoryAtURL:self.presetsDirectoryURL
+    return [self presetURLsInDirectory:self.presetsDirectoryURL];
+}
+
++ (NSArray<NSURL *> *)presetURLsInDirectory:(NSURL *)directory
+{
+    NSArray<NSURL *> *contents = [NSFileManager.defaultManager contentsOfDirectoryAtURL:directory
                                                              includingPropertiesForKeys:nil
                                                                                 options:NSDirectoryEnumerationSkipsHiddenFiles
                                                                                   error:nil];

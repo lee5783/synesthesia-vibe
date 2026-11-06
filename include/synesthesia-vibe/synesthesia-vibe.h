@@ -79,7 +79,7 @@ void        sv_get_audio_levels(sv_context* ctx, float* out_bass, float* out_mid
 void        sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo);
 void        sv_resize(sv_context* ctx, int width, int height);
 
-/* sv_pause makes sv_render_frame a no-op until sv_resume, except for the debug report; resume continues the preset time without a jump or reset. */
+/* sv_pause stops the simulation until sv_resume; while paused, sv_render_frame only runs the debug report and, on an interactive context, redraws the last frame to the target. Resume continues the preset time without a jump or reset. */
 void        sv_pause(sv_context* ctx);
 void        sv_resume(sv_context* ctx);
 

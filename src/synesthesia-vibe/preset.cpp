@@ -452,6 +452,7 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
     const bool previousNextPresetTimeWasInitialized = ctx->nextPresetTimeWasInitialized;
 
     BdApplyPresetImport(ctx, nativePath, blend_seconds);
+    ctx->resumePending = true;
 
     if (ctx->hostSink.ErrorCount() > 0)
     {

@@ -7,11 +7,15 @@
 
 #import "VisualizerViewController.h"
 
+#import <OpenGL/gl3.h>
+
 #import "SampleBundle.h"
 
 static const NSTimeInterval VisualizerMaximumFeedSeconds = 0.25;
 static const NSTimeInterval VisualizerFrameRateLogInterval = 1.0;
 static const NSTimeInterval VisualizerLaunchSnapshotDelay = 3.0;
+static const float VisualizerPresetBlendSeconds = 2.0f;
+static const double VisualizerLiveInputSampleRate = 44100.0;
 
 static void VisualizerLog(NSString *message)
 {
@@ -28,7 +32,8 @@ static NSString *_Nullable VisualizerLaunchValue(NSArray<NSString *> *arguments,
 
 static float VisualizerLaunchMaxFps(NSArray<NSString *> *arguments)
 {
-    return VisualizerLaunchValue(arguments, @"--max-fps").floatValue;
+    NSString *value = VisualizerLaunchValue(arguments, @"--max-fps");
+    return value != nil ? value.floatValue : 60.0f;
 }
 
 static float VisualizerLaunchFloat(NSArray<NSString *> *arguments, NSString *name, float fallback)
@@ -58,6 +63,8 @@ static CGFloat VisualizerLaunchRenderScale(NSArray<NSString *> *arguments)
 static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 {
     switch (audioSource) {
+    case VisualizerAudioSourceNone:
+        return @"none";
     case VisualizerAudioSourceWav:
         return @"wav";
     case VisualizerAudioSourceMicrophone:
@@ -79,6 +86,8 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 @property (nonatomic, assign) double wavFrameRemainder;
 @property (nonatomic, strong, nullable) SVAudioInput *microphoneInput;
 @property (nonatomic, strong, nullable) SVSystemAudioInput *systemAudioInput;
+@property (nonatomic, copy, readwrite, nullable) NSString *glVersionString;
+@property (nonatomic, copy, readwrite, nullable) NSDictionary<NSString *, id> *lastDebugInfo;
 @property (nonatomic, assign) BOOL logsFrameRate;
 @property (nonatomic, assign) NSUInteger renderedFrameCount;
 @property (nonatomic, assign) NSTimeInterval frameRateWindowStart;
@@ -110,6 +119,7 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     visualizerView.playbackRate = VisualizerLaunchFloat(arguments, @"--playback-rate", 1.0f);
     visualizerView.delegate = self;
     self.visualizerView = visualizerView;
+    self.audioSource = VisualizerAudioSourceWav;
     self.view = visualizerView;
 }
 
@@ -178,6 +188,17 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 {
     VisualizerLog([NSString stringWithFormat:@"debug enabled=%d", debugEnabled]);
     self.visualizerView.debugEnabled = debugEnabled;
+    if (!debugEnabled) {
+        self.lastDebugInfo = nil;
+        self.visualizerView.debugInfoHandler = nil;
+        return;
+    }
+
+    __weak VisualizerViewController *weakSelf = self;
+    self.visualizerView.debugInfoHandler = ^(NSDictionary<NSString *, id> *info) {
+        weakSelf.lastDebugInfo = info;
+        [weakSelf.delegate visualizerViewController:weakSelf didUpdateDebugInfo:info];
+    };
 }
 
 - (CGFloat)renderScale
@@ -261,6 +282,13 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     self.pendingPresetURL = url;
 }
 
+- (double)audioSampleRate
+{
+    if (self.audioSource == VisualizerAudioSourceWav && self.wavFeeder.sampleRate > 0)
+        return (double)self.wavFeeder.sampleRate;
+    return VisualizerLiveInputSampleRate;
+}
+
 - (BOOL)playWavAtURL:(NSURL *)url error:(NSError **)error
 {
     SVWavFeeder *wavFeeder = [[SVWavFeeder alloc] initWithURL:url error:error];
@@ -277,22 +305,30 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 
 - (BOOL)selectAudioSource:(VisualizerAudioSource)audioSource error:(NSError **)error
 {
+    VisualizerAudioSource previousAudioSource = self.audioSource;
     [self stopLiveInputs];
     self.audioSource = audioSource;
 
     SVContext *context = self.visualizerView.context;
     BOOL started = context != nil ? [self startAudioSourceWithContext:context error:error] : YES;
-    if (!started)
-        self.audioSource = VisualizerAudioSourceWav;
+    if (!started) {
+        [self stopLiveInputs];
+        self.audioSource = previousAudioSource;
+        NSError *restoreError = nil;
+        if (context != nil && ![self startAudioSourceWithContext:context error:&restoreError])
+            self.audioSource = VisualizerAudioSourceWav;
+    }
 
     VisualizerLog([NSString stringWithFormat:@"audio source=%@%@", VisualizerAudioSourceName(self.audioSource),
-                   started ? @"" : @" (start failed, back to wav)"]);
+                   started ? @"" : @" (start failed, reverted)"]);
     return started;
 }
 
 - (BOOL)startAudioSourceWithContext:(SVContext *)context error:(NSError **)error
 {
     switch (self.audioSource) {
+    case VisualizerAudioSourceNone:
+        return YES;
     case VisualizerAudioSourceWav:
         return YES;
     case VisualizerAudioSourceMicrophone: {
@@ -336,7 +372,8 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 
     self.pendingPresetURL = nil;
     NSError *error = nil;
-    if (![context loadPresetAtURL:url blendSeconds:0.0f error:&error]) {
+    float blendSeconds = self.presetURL == nil ? 0.0f : VisualizerPresetBlendSeconds;
+    if (![context loadPresetAtURL:url blendSeconds:blendSeconds error:&error]) {
         VisualizerLog([NSString stringWithFormat:@"preset load failed \"%@\": %@", url.lastPathComponent, error.localizedDescription]);
         [self.delegate visualizerViewController:self didFailWithError:error];
         return;
@@ -369,12 +406,27 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
         context.playbackRate, context.configuration.maxLuminance, context.configuration.flashLimit]);
     [self applyPendingPresetWithContext:context];
     [self scheduleLaunchSnapshot];
+    [self readGlVersionString];
 
     NSError *error = nil;
     if (![self startAudioSourceWithContext:context error:&error]) {
         self.audioSource = VisualizerAudioSourceWav;
         [self.delegate visualizerViewController:self didFailWithError:error];
     }
+}
+
+- (void)readGlVersionString
+{
+    if (self.glVersionString.length > 0)
+        return;
+
+    __block NSString *version = nil;
+    [self.visualizerView performWithContextCurrent:^{
+        const GLubyte *raw = glGetString(GL_VERSION);
+        if (raw != NULL)
+            version = [NSString stringWithUTF8String:(const char *)raw];
+    }];
+    self.glVersionString = version;
 }
 
 - (void)view:(SVView *)view willRenderFrameWithDeltaTime:(NSTimeInterval)deltaTime

@@ -8,26 +8,46 @@
 
 /* Begin PBXBuildFile section */
 		0D5CAD82E07FFBDD4351EF01 /* VisualizerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7C54E36215FA7516D17BADD7 /* VisualizerViewController.m */; };
+		13DCA8B282B600574159F995 /* SidebarViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 200F1250F132465EB897DD11 /* SidebarViewController.m */; };
 		14E65D6F6B67FB09CD808FCB /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 6E4FBDBDB014CA4925A947FB /* MainWindowController.m */; };
+		30F75F5B95576FE16A756385 /* DebugOverlayView.m in Sources */ = {isa = PBXBuildFile; fileRef = 29E1E8EF29F4991FB212B008 /* DebugOverlayView.m */; };
+		5244F70952BC4ABD0E920070 /* SVColorTokens.m in Sources */ = {isa = PBXBuildFile; fileRef = ADFE76D594AAE51E34E3222E /* SVColorTokens.m */; };
 		636E9EBF560480B0B35A721A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = CF87E91C718C410562F7D015 /* main.m */; };
+		96484710AE9AE1C58383302B /* InspectorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0969A67DAB30D9682F42908C /* InspectorViewController.m */; };
+		9CF1ACE4EF56DFC827C569C5 /* OverVideoButtonView.m in Sources */ = {isa = PBXBuildFile; fileRef = BCF77BB8381D04B2F33FB655 /* OverVideoButtonView.m */; };
+		ABBB2C12FC88C3DB3A4CFC9C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 906B15376B6BE39F3D5EF804 /* Assets.xcassets */; };
 		B64B8E8F16040FDB14349713 /* CaptureCommand.m in Sources */ = {isa = PBXBuildFile; fileRef = 598B238FA01FA78A74D52DA7 /* CaptureCommand.m */; };
 		B9E4CD2F14AFF68A2E1CEBD1 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2AF129A273DF80BC6979BA3F /* AppDelegate.m */; };
 		BD51C0ED0DC4A13C57EF97E0 /* SynesthesiaVibe in Frameworks */ = {isa = PBXBuildFile; productRef = E9825F534E3DD2D844B1E6EA /* SynesthesiaVibe */; };
+		CEC7E80D05955938414790F6 /* VisualizerContentViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1EC998EE6905B05C7435802C /* VisualizerContentViewController.m */; };
 		FC2E78210117066B3A9F9453 /* SampleBundle.m in Sources */ = {isa = PBXBuildFile; fileRef = 790B44F8C13F954A8232D784 /* SampleBundle.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		031CD173F506F69A25422F30 /* SidebarViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SidebarViewController.h; sourceTree = "<group>"; };
+		0969A67DAB30D9682F42908C /* InspectorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = InspectorViewController.m; sourceTree = "<group>"; };
+		1CA4ACE352012FA9674AC392 /* InspectorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = InspectorViewController.h; sourceTree = "<group>"; };
+		1EC998EE6905B05C7435802C /* VisualizerContentViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = VisualizerContentViewController.m; sourceTree = "<group>"; };
+		200F1250F132465EB897DD11 /* SidebarViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SidebarViewController.m; sourceTree = "<group>"; };
 		2998FEEDF4140924C73C6C98 /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
+		29E1E8EF29F4991FB212B008 /* DebugOverlayView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DebugOverlayView.m; sourceTree = "<group>"; };
 		2AF129A273DF80BC6979BA3F /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		2C9FDF6F4CBF7BE5E0ECD2A4 /* SynesthesiaVibeAppKit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SynesthesiaVibeAppKit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B8B5F435C3860EE0EA8BB75 /* VisualizerViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VisualizerViewController.h; sourceTree = "<group>"; };
+		588CE6E52F487E0F113029B2 /* DebugOverlayView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DebugOverlayView.h; sourceTree = "<group>"; };
 		598B238FA01FA78A74D52DA7 /* CaptureCommand.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CaptureCommand.m; sourceTree = "<group>"; };
+		5C6B3301FCD68CE5F6313019 /* SVColorTokens.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SVColorTokens.h; sourceTree = "<group>"; };
 		63BC73662E706324D594A8D4 /* SampleBundle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SampleBundle.h; sourceTree = "<group>"; };
 		66285CED39F999FE46FA0094 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		6E4FBDBDB014CA4925A947FB /* MainWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MainWindowController.m; sourceTree = "<group>"; };
 		790B44F8C13F954A8232D784 /* SampleBundle.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SampleBundle.m; sourceTree = "<group>"; };
 		7C54E36215FA7516D17BADD7 /* VisualizerViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = VisualizerViewController.m; sourceTree = "<group>"; };
+		80A33E6A03FA944E9B81D331 /* VisualizerContentViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VisualizerContentViewController.h; sourceTree = "<group>"; };
+		906B15376B6BE39F3D5EF804 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		ADFE76D594AAE51E34E3222E /* SVColorTokens.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SVColorTokens.m; sourceTree = "<group>"; };
+		BCF77BB8381D04B2F33FB655 /* OverVideoButtonView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OverVideoButtonView.m; sourceTree = "<group>"; };
 		BE85EE4D63C5E5CE84F05071 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
+		CC2F6D0E99489DCA0A85F864 /* OverVideoButtonView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OverVideoButtonView.h; sourceTree = "<group>"; };
 		CF87E91C718C410562F7D015 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		DB9E466CB0886D1FB0B92410 /* CaptureCommand.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CaptureCommand.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -52,6 +72,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		14000063BB6E56ABD33032CC /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				906B15376B6BE39F3D5EF804 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		1C65AFDC4AC05EF61AB3204B /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -59,11 +87,23 @@
 				2AF129A273DF80BC6979BA3F /* AppDelegate.m */,
 				DB9E466CB0886D1FB0B92410 /* CaptureCommand.h */,
 				598B238FA01FA78A74D52DA7 /* CaptureCommand.m */,
+				588CE6E52F487E0F113029B2 /* DebugOverlayView.h */,
+				29E1E8EF29F4991FB212B008 /* DebugOverlayView.m */,
+				1CA4ACE352012FA9674AC392 /* InspectorViewController.h */,
+				0969A67DAB30D9682F42908C /* InspectorViewController.m */,
 				CF87E91C718C410562F7D015 /* main.m */,
 				BE85EE4D63C5E5CE84F05071 /* MainWindowController.h */,
 				6E4FBDBDB014CA4925A947FB /* MainWindowController.m */,
+				CC2F6D0E99489DCA0A85F864 /* OverVideoButtonView.h */,
+				BCF77BB8381D04B2F33FB655 /* OverVideoButtonView.m */,
 				63BC73662E706324D594A8D4 /* SampleBundle.h */,
 				790B44F8C13F954A8232D784 /* SampleBundle.m */,
+				031CD173F506F69A25422F30 /* SidebarViewController.h */,
+				200F1250F132465EB897DD11 /* SidebarViewController.m */,
+				5C6B3301FCD68CE5F6313019 /* SVColorTokens.h */,
+				ADFE76D594AAE51E34E3222E /* SVColorTokens.m */,
+				80A33E6A03FA944E9B81D331 /* VisualizerContentViewController.h */,
+				1EC998EE6905B05C7435802C /* VisualizerContentViewController.m */,
 				3B8B5F435C3860EE0EA8BB75 /* VisualizerViewController.h */,
 				7C54E36215FA7516D17BADD7 /* VisualizerViewController.m */,
 			);
@@ -74,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				E5F1F092A62C8C8278388CC3 /* Packages */,
+				14000063BB6E56ABD33032CC /* Resources */,
 				1C65AFDC4AC05EF61AB3204B /* Sources */,
 				07FA4C2BA9D1E26367C2E3D5 /* Products */,
 			);
@@ -95,6 +136,7 @@
 			buildConfigurationList = 2080457227BF2506C057E01B /* Build configuration list for PBXNativeTarget "SynesthesiaVibeAppKit" */;
 			buildPhases = (
 				191404D59C7CACA041099FD7 /* Sources */,
+				03BE4D90D54314B8C5B83612 /* Resources */,
 				DAE86BB678736A2B6FFDB97E /* Frameworks */,
 				A791AE996FBB2C24554E1B9A /* Bundle SynesthesiaVibe Resources */,
 			);
@@ -146,6 +188,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		03BE4D90D54314B8C5B83612 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ABBB2C12FC88C3DB3A4CFC9C /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXShellScriptBuildPhase section */
 		A791AE996FBB2C24554E1B9A /* Bundle SynesthesiaVibe Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -180,8 +233,14 @@
 			files = (
 				B9E4CD2F14AFF68A2E1CEBD1 /* AppDelegate.m in Sources */,
 				B64B8E8F16040FDB14349713 /* CaptureCommand.m in Sources */,
+				30F75F5B95576FE16A756385 /* DebugOverlayView.m in Sources */,
+				96484710AE9AE1C58383302B /* InspectorViewController.m in Sources */,
 				14E65D6F6B67FB09CD808FCB /* MainWindowController.m in Sources */,
+				9CF1ACE4EF56DFC827C569C5 /* OverVideoButtonView.m in Sources */,
+				5244F70952BC4ABD0E920070 /* SVColorTokens.m in Sources */,
 				FC2E78210117066B3A9F9453 /* SampleBundle.m in Sources */,
+				13DCA8B282B600574159F995 /* SidebarViewController.m in Sources */,
+				CEC7E80D05955938414790F6 /* VisualizerContentViewController.m in Sources */,
 				0D5CAD82E07FFBDD4351EF01 /* VisualizerViewController.m in Sources */,
 				636E9EBF560480B0B35A721A /* main.m in Sources */,
 			);
@@ -194,6 +253,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_IDENTITY = "-";
@@ -221,6 +281,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_IDENTITY = "-";

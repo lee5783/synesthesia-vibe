@@ -11,16 +11,24 @@ import SynesthesiaVibe
 struct VisualizerRootView: View {
 
     let library: PresetLibrary
-    @StateObject private var player: SynesthesiaPlayer
+    @StateObject private var store: VisualizerStore
 
     init(library: PresetLibrary) {
         self.library = library
         let configuration = SVContextConfiguration()
         configuration.resourceURL = library.resourceURL
-        _player = StateObject(wrappedValue: SynesthesiaPlayer(configuration: configuration))
+        let player = SynesthesiaPlayer(configuration: configuration)
+        _store = StateObject(wrappedValue: VisualizerStore(
+            library: library,
+            player: player,
+            folderName: VisualizerStore.bundledFolderName,
+            fps: 60
+        ))
     }
 
     var body: some View {
-        VisualizerScreen(library: library, player: player)
+        VisualizerScreen(store: store)
+            .preferredColorScheme(.dark)
+            .tint(DesignTokens.accentText)
     }
 }

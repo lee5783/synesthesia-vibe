@@ -11,6 +11,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
+    VisualizerAudioSourceNone,
     VisualizerAudioSourceWav,
     VisualizerAudioSourceMicrophone,
     VisualizerAudioSourceSystemAudio
@@ -22,6 +23,7 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 
 - (void)visualizerViewController:(VisualizerViewController *)controller didLoadPresetAtURL:(NSURL *)url;
 - (void)visualizerViewController:(VisualizerViewController *)controller didFailWithError:(NSError *)error;
+- (void)visualizerViewController:(VisualizerViewController *)controller didUpdateDebugInfo:(NSDictionary<NSString *, id> *)info;
 
 @end
 
@@ -34,6 +36,9 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 @property (nonatomic, copy, readonly, nullable) NSURL *wavURL;
 @property (nonatomic, assign, readonly) VisualizerAudioSource audioSource;
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
+@property (nonatomic, assign, readonly) double audioSampleRate;
+@property (nonatomic, copy, readonly, nullable) NSString *glVersionString;
+@property (nonatomic, copy, readonly, nullable) NSDictionary<NSString *, id> *lastDebugInfo;
 @property (nonatomic, assign) float preferredFramesPerSecond;
 @property (nonatomic, assign) CGFloat renderScale;
 @property (nonatomic, assign) float playbackRate;
