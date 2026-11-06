@@ -24,6 +24,19 @@ void GetFast_CLEAR();
 int GetFastInt(const char* szVarName, int def, FILE* f);
 void ReadCode(FILE* f, char* pStr, char* prefix);
 
+struct sv_prepared_preset
+{
+    sv_context* owner;
+    uint64_t ownerSerial;
+    std::unique_ptr<CState> state;
+    BdPreparedStage warp;
+    BdPreparedStage comp;
+    int presetVersion;
+    std::string presetName;
+    std::string textureDirectory;
+    bool committed;
+};
+
 namespace
 {
     const char kNotPresetMessage[] = "not a MilkDrop preset: no [preset00] section or known key";
@@ -52,21 +65,19 @@ namespace
 #endif
     }
 
-    void BdLoadShaderResources(sv_context* ctx)
+    void BdLoadShaderResources(const std::string& root, char* includeText, char* defaultWarpText, char* defaultCompText)
     {
-        const std::string& root = ctx->resourcePath;
+        includeText[0] = 0;
+        defaultWarpText[0] = 0;
+        defaultCompText[0] = 0;
 
-        ctx->shaderIncludeText[0] = 0;
-        ctx->defaultWarpShaderText[0] = 0;
-        ctx->defaultCompShaderText[0] = 0;
-
-        render_core::ReadResourceToString(root.c_str(), kIncludeResourceName, ctx->shaderIncludeText,
+        render_core::ReadResourceToString(root.c_str(), kIncludeResourceName, includeText,
             kBeatdropResourceTextBytes, false);
-        render_core::StripComments(ctx->shaderIncludeText);
+        render_core::StripComments(includeText);
 
-        render_core::ReadResourceToString(root.c_str(), kWarpResourceName, ctx->defaultWarpShaderText,
+        render_core::ReadResourceToString(root.c_str(), kWarpResourceName, defaultWarpText,
             kBeatdropResourceTextBytes, true);
-        render_core::ReadResourceToString(root.c_str(), kCompResourceName, ctx->defaultCompShaderText,
+        render_core::ReadResourceToString(root.c_str(), kCompResourceName, defaultCompText,
             kBeatdropResourceTextBytes, true);
     }
 
@@ -388,6 +399,16 @@ namespace
         return SV_OK;
     }
 
+    void BdStartPresetBlend(sv_context* ctx, float now, float blendSeconds)
+    {
+        if (blendSeconds >= 0.001f)
+            ctx->state->StartBlendFrom(ctx->oldState, now, blendSeconds);
+
+        ctx->presetStartTime = now;
+        ctx->nextPresetTime = -1.0f;
+        ctx->nextPresetTimeWasInitialized = false;
+    }
+
     void BdApplyPresetImport(sv_context* ctx, const std::wstring& presetPath, float blendSeconds)
     {
         ctx->hostSink.Clear();
@@ -409,12 +430,109 @@ namespace
         ctx->state->Import(presetPath.c_str(), now, ctx->oldState, STATE_ALL, caps,
             ctx->defaultWarpShaderText, ctx->defaultCompShaderText, frameInputs, ctx->hostSink);
 
-        if (blendSeconds >= 0.001f)
-            ctx->state->StartBlendFrom(ctx->oldState, now, blendSeconds);
+        BdStartPresetBlend(ctx, now, blendSeconds);
+    }
 
-        ctx->presetStartTime = now;
-        ctx->nextPresetTime = -1.0f;
-        ctx->nextPresetTimeWasInitialized = false;
+    void BdPrepareStage(render_gl::TranslatedShaderCache& translations, render_gl::PresetShaderStage stage, int version,
+        const char* text, BdPreparedStage& prepared)
+    {
+        prepared.translated = version > 0;
+
+        if (!prepared.translated)
+            return;
+
+        prepared.hlsl = text;
+        prepared.shader = translations.GetOrTranslate(stage, text);
+    }
+
+    sv_status BdPreparePresetFile(sv_context* ctx, const char* path, const std::string& textureDirectory, bool reportPresetName,
+        std::unique_ptr<sv_prepared_preset>& prepared, std::string& message)
+    {
+        if (path == nullptr || path[0] == '\0')
+        {
+            message = "sv_prepare_preset: path is empty";
+            return SV_ERR_ARG;
+        }
+
+        std::vector<char> includeText(kBeatdropResourceTextBytes);
+        std::vector<char> defaultWarpText(kBeatdropResourceTextBytes);
+        std::vector<char> defaultCompText(kBeatdropResourceTextBytes);
+        BdLoadShaderResources(ctx->resourcePath, includeText.data(), defaultWarpText.data(), defaultCompText.data());
+
+        const std::wstring nativePath = BdToNativePath(BdUtf8ToWide(path));
+
+        if (!BdFileExists(nativePath.c_str()))
+        {
+            message = std::string("preset not found: ") + path;
+            return SV_ERR_IO;
+        }
+
+        if (!BdFileLooksLikePreset(nativePath))
+        {
+            message = kNotPresetMessage;
+            return SV_ERR_PARSE;
+        }
+
+        std::unique_ptr<CState> state(new CState());
+        BdHostSink hostSink;
+        ParserCapabilities caps;
+        caps.isAMD = false;
+        caps.maxPSVersion = MD2_PS_3_0;
+
+        if (!state->ImportPrepare(nativePath.c_str(), nullptr, STATE_ALL, caps, defaultWarpText.data(), defaultCompText.data(),
+            hostSink))
+        {
+            message = std::string("preset not readable: ") + path;
+            return SV_ERR_IO;
+        }
+
+        if (hostSink.ErrorCount() > 0)
+        {
+            message = hostSink.LastError();
+            return SV_ERR_PARSE;
+        }
+
+        prepared.reset(new sv_prepared_preset());
+        prepared->owner = ctx;
+        prepared->ownerSerial = ctx->serial;
+        prepared->presetVersion = BdReadPresetVersion(nativePath);
+        prepared->presetName = reportPresetName ? BdWideToUtf8(state->m_szDesc) : std::string();
+        prepared->textureDirectory = textureDirectory;
+        prepared->committed = false;
+
+        BdPrepareStage(ctx->translationCache, render_gl::PresetShaderStage::Warp, state->m_nWarpPSVersion,
+            state->m_szWarpShadersText, prepared->warp);
+        BdPrepareStage(ctx->translationCache, render_gl::PresetShaderStage::Composite, state->m_nCompPSVersion,
+            state->m_szCompShadersText, prepared->comp);
+
+        prepared->state = std::move(state);
+        message.clear();
+        return SV_OK;
+    }
+
+    void BdCommitPreparedPreset(sv_context* ctx, sv_prepared_preset& prepared, float blendSeconds)
+    {
+        ctx->hostSink.Clear();
+
+        if (wcscmp(ctx->state->m_szDesc, INVALID_PRESET_DESC) == 0)
+            blendSeconds = 0.0f;
+
+        CState* displaced = ctx->oldState;
+        ctx->oldState = ctx->state;
+        ctx->state = prepared.state.release();
+        prepared.committed = true;
+        delete displaced;
+
+        const FrameInputs frameInputs = BdMakeFrameInputs(ctx);
+        const float now = static_cast<float>(ctx->timeModel.GetTime());
+
+        ctx->state->ImportCommit(now, frameInputs);
+        BdStartPresetBlend(ctx, now, blendSeconds);
+        ctx->resumePending = true;
+
+        ctx->presetVersion = prepared.presetVersion;
+        ctx->presetName = prepared.presetName;
+        ctx->lastError = BdGlPreparePresetShaders(ctx, prepared.textureDirectory, &prepared.warp, &prepared.comp);
     }
 }
 
@@ -428,7 +546,7 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
         return SV_ERR_ARG;
     }
 
-    BdLoadShaderResources(ctx);
+    BdLoadShaderResources(ctx->resourcePath, ctx->shaderIncludeText, ctx->defaultWarpShaderText, ctx->defaultCompShaderText);
 
     const std::wstring presetPath = BdUtf8ToWide(path);
     const std::wstring nativePath = BdToNativePath(presetPath);
@@ -568,4 +686,112 @@ extern "C" sv_status sv_validate_preset_memory(const char* text, size_t len, cha
     remove(tempPath.c_str());
     BdCopyError(error, error_len, message);
     return status;
+}
+
+extern "C" sv_status sv_prepare_preset(sv_context* ctx, const char* path, sv_prepared_preset** out_prepared, char* error,
+    size_t error_len)
+{
+    if (out_prepared != nullptr)
+        *out_prepared = nullptr;
+
+    if (ctx == nullptr || out_prepared == nullptr)
+    {
+        BdCopyError(error, error_len, "sv_prepare_preset: context or output is null");
+        return SV_ERR_ARG;
+    }
+
+    std::unique_ptr<sv_prepared_preset> prepared;
+    std::string message;
+    const sv_status status = BdPreparePresetFile(ctx, path, path == nullptr ? std::string() : BdPresetDirectory(path), true,
+        prepared, message);
+
+    BdCopyError(error, error_len, message);
+
+    if (status == SV_OK)
+        *out_prepared = prepared.release();
+
+    return status;
+}
+
+extern "C" sv_status sv_prepare_preset_memory(sv_context* ctx, const char* text, size_t len, sv_prepared_preset** out_prepared,
+    char* error, size_t error_len)
+{
+    if (out_prepared != nullptr)
+        *out_prepared = nullptr;
+
+    if (ctx == nullptr || out_prepared == nullptr || text == nullptr)
+    {
+        BdCopyError(error, error_len, "sv_prepare_preset_memory: context, text or output is null");
+        return SV_ERR_ARG;
+    }
+
+    if (!BdLooksLikePresetText(text, len))
+    {
+        BdCopyError(error, error_len, kNotPresetMessage);
+        return SV_ERR_PARSE;
+    }
+
+    static std::atomic<unsigned int> s_tempCounter(0);
+    const unsigned int tempIndex = s_tempCounter.fetch_add(1);
+
+    char tempName[96];
+    snprintf(tempName, sizeof(tempName), "bd-preset-prepare-%p-%u.tmp", static_cast<const void*>(&s_tempCounter), tempIndex);
+
+    const std::string tempPath = BdTempDirectory(ctx->cachePath) + "/" + tempName;
+
+    if (!BdWriteTempFile(tempPath, text, len))
+    {
+        BdCopyError(error, error_len, "sv_prepare_preset_memory: could not create temporary file");
+        return SV_ERR_IO;
+    }
+
+    std::unique_ptr<sv_prepared_preset> prepared;
+    std::string message;
+    const sv_status status = BdPreparePresetFile(ctx, tempPath.c_str(), ctx->textureSearchPath, false, prepared, message);
+
+    remove(tempPath.c_str());
+    BdCopyError(error, error_len, message);
+
+    if (status == SV_OK)
+        *out_prepared = prepared.release();
+
+    return status;
+}
+
+extern "C" sv_status sv_commit_preset(sv_context* ctx, sv_prepared_preset* prepared, float blend_seconds)
+{
+    if (ctx == nullptr)
+        return SV_ERR_ARG;
+
+    if (prepared == nullptr)
+    {
+        BdSetPresetError(ctx, "sv_commit_preset: prepared preset is null");
+        return SV_ERR_ARG;
+    }
+
+    if (prepared->committed)
+    {
+        BdSetPresetError(ctx, "sv_commit_preset: prepared preset was already committed");
+        return SV_ERR_ARG;
+    }
+
+    if (prepared->owner != ctx || prepared->ownerSerial != ctx->serial)
+    {
+        BdSetPresetError(ctx, "sv_commit_preset: prepared preset belongs to another context");
+        return SV_ERR_ARG;
+    }
+
+    if (ctx->gl != nullptr && !ctx->gl->ready)
+    {
+        BdSetPresetError(ctx, "GL pipeline unavailable, preset not committed");
+        return SV_ERR_GL;
+    }
+
+    BdCommitPreparedPreset(ctx, *prepared, blend_seconds);
+    return SV_OK;
+}
+
+extern "C" void sv_prepared_preset_free(sv_prepared_preset* prepared)
+{
+    delete prepared;
 }

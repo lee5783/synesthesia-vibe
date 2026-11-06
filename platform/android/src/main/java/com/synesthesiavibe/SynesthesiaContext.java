@@ -150,6 +150,51 @@ public final class SynesthesiaContext implements AutoCloseable {
         }
     }
 
+    public PreparedPreset preparePreset(File preset) throws SynesthesiaException {
+        if (preset == null)
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_prepare_preset: path is empty");
+
+        return prepare(encodePath(preset), false);
+    }
+
+    public PreparedPreset preparePresetText(String text) throws SynesthesiaException {
+        if (text == null)
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_prepare_preset_memory: text is null");
+
+        return prepare(text.getBytes(StandardCharsets.UTF_8), true);
+    }
+
+    public void commitPreset(PreparedPreset prepared, float blendSeconds) throws SynesthesiaException {
+        if (prepared == null)
+            throw new SynesthesiaException(SynesthesiaException.SV_ERR_ARG, "sv_commit_preset: prepared preset is null");
+
+        lock.readLock().lock();
+        try {
+            check(prepared.commitTo(requireHandle(), blendSeconds));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private PreparedPreset prepare(byte[] source, boolean text) throws SynesthesiaException {
+        byte[][] error = new byte[1][];
+        int[] status = new int[1];
+        long prepared;
+        lock.readLock().lock();
+        try {
+            long context = requireHandle();
+            prepared = text
+                    ? nativePreparePresetText(context, source, error, status)
+                    : nativePreparePreset(context, source, error, status);
+            if (prepared != 0)
+                return new PreparedPreset(prepared);
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        throw new SynesthesiaException(status[0], decode(error[0]));
+    }
+
     public void pushPcm(float[] interleaved, int channels) {
         pushPcm(interleaved, interleaved.length / requireChannels(channels), channels);
     }
@@ -440,6 +485,14 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native int nativeValidatePreset(byte[] path, byte[][] errorOut);
 
     private static native void nativeDestroy(long handle);
+
+    private static native long nativePreparePreset(long handle, byte[] path, byte[][] errorOut, int[] statusOut);
+
+    private static native long nativePreparePresetText(long handle, byte[] text, byte[][] errorOut, int[] statusOut);
+
+    static native int nativeCommitPreset(long handle, long prepared, float blendSeconds);
+
+    static native void nativeFreePrepared(long prepared);
 
     private static native int nativeLoadPreset(long handle, byte[] path, float blendSeconds);
 

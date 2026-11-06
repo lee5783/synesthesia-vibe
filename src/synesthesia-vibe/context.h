@@ -23,6 +23,7 @@
 #include "host_sink.h"
 #include "mesh.h"
 #include "parser_host.h"
+#include "shader_translator.h"
 #include "sound_analysis.h"
 #include "state.h"
 #include "state_vectors.h"
@@ -63,6 +64,7 @@ struct sv_context
     std::string textureSearchPath;
     std::string cachePath;
     std::string lastError;
+    uint64_t serial;
 
     CState* state;
     CState* oldState;
@@ -130,6 +132,7 @@ struct sv_context
     int nGridY;
 
     BdGlPipeline* gl;
+    render_gl::TranslatedShaderCache translationCache;
     int framesSinceResize;
 
     Vec4f randFrame;

@@ -17,6 +17,7 @@ extern "C" {
 #endif
 
 typedef struct sv_context sv_context;
+typedef struct sv_prepared_preset sv_prepared_preset;
 
 typedef enum sv_status
 {
@@ -67,15 +68,25 @@ void        sv_destroy(sv_context* ctx);
 sv_status   sv_load_preset(sv_context* ctx, const char* path, float blend_seconds);
 sv_status   sv_load_preset_memory(sv_context* ctx, const char* text, size_t len, float blend_seconds);
 
-/* sv_validate_preset* need no context or GL; they are not safe to run concurrently with a preset load on another thread. */
+/* sv_validate_preset* need no context or GL and may run on any thread, concurrently with rendering, loads and other validates or prepares, once an sv_create in the process has returned. */
 sv_status   sv_validate_preset(const char* path, char* error, size_t error_len);
 sv_status   sv_validate_preset_memory(const char* text, size_t len, char* error, size_t error_len);
+
+/* sv_prepare_preset* do the CPU half of a load on any thread: read and parse the preset, compile its code without running it, and translate its shaders. They read only the context's resource, texture and cache paths, never its live state or GL, so they may run while the context renders; the host must not destroy the context during a prepare. On success *out_prepared is a new handle and error is ""; on failure *out_prepared is NULL, error holds the reason and the codes match sv_load_preset* (a shader that does not translate is not an error: the commit falls back to fixed-function and reports it in sv_last_error). */
+sv_status   sv_prepare_preset(sv_context* ctx, const char* path, sv_prepared_preset** out_prepared, char* error, size_t error_len);
+sv_status   sv_prepare_preset_memory(sv_context* ctx, const char* text, size_t len, sv_prepared_preset** out_prepared, char* error, size_t error_len);
+
+/* sv_commit_preset finishes the load on the GL thread, like sv_load_preset with the prepared result: init code, random preset values, the blend and GL programs run here, at commit time. A handle commits once, to the context that prepared it; a null, committed or foreign handle gives SV_ERR_ARG, and SV_ERR_GL (the GL pipeline exists but is not ready) is returned before anything changes, leaving the handle and the context as they were, where sv_load_preset* would load and then report SV_ERR_GL; a context without a GL pipeline commits the CPU state only. The handle still needs sv_prepared_preset_free after a commit. */
+sv_status   sv_commit_preset(sv_context* ctx, sv_prepared_preset* prepared, float blend_seconds);
+
+/* sv_prepared_preset_free releases a handle, committed or not, on any thread, also after its context was destroyed. NULL is ignored. */
+void        sv_prepared_preset_free(sv_prepared_preset* prepared);
 
 void        sv_push_pcm_float(sv_context* ctx, const float* interleaved, size_t frames, int channels);
 void        sv_push_pcm_s16(sv_context* ctx, const int16_t* interleaved, size_t frames, int channels);
 void        sv_get_audio_levels(sv_context* ctx, float* out_bass, float* out_mid, float* out_treb);
 
-/* sv_init_gl, sv_create, sv_load_preset*, sv_resize, sv_render_frame, sv_set_debug_callback, sv_set_debug_interval and sv_destroy must run on the thread whose GL context is current; width/height are backing pixels. */
+/* sv_init_gl, sv_create, sv_load_preset*, sv_commit_preset, sv_resize, sv_render_frame, sv_set_debug_callback, sv_set_debug_interval and sv_destroy must run on the thread whose GL context is current; width/height are backing pixels. */
 void        sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo);
 void        sv_resize(sv_context* ctx, int width, int height);
 

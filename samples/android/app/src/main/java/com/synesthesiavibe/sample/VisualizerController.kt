@@ -26,12 +26,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.synesthesiavibe.AudioInput
 import com.synesthesiavibe.PlaybackCaptureInput
+import com.synesthesiavibe.PreparedPreset
 import com.synesthesiavibe.SynesthesiaConfiguration
 import com.synesthesiavibe.SynesthesiaContext
 import com.synesthesiavibe.SynesthesiaException
 import com.synesthesiavibe.SynesthesiaRenderer
 import com.synesthesiavibe.WavFeeder
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -110,6 +114,11 @@ class VisualizerController(
 
     @Volatile
     private var loadedPreset: Preset = initialPreset
+    private val requestSequence = AtomicLong()
+    private val pendingPrepared = AtomicReference<PreparedPreset?>()
+    private val prepareExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(null, task, "preset-prepare", PREPARE_STACK_BYTES).apply { isDaemon = true }
+    }
 
     @Volatile
     private var feedsWav = true
@@ -198,6 +207,8 @@ class VisualizerController(
     fun detach() {
         stopLiveInput()
         mainHandler.removeCallbacks(autoChangeTick)
+        requestSequence.incrementAndGet()
+        pendingPrepared.getAndSet(null)?.close()
         val view = surface ?: return
         surface = null
         val retiring = renderer
@@ -294,7 +305,9 @@ class VisualizerController(
         preset = next
         loadedPreset = next
         resetCountdown()
-        surface?.queueEvent { renderer.context?.let { load(it, next, BLEND_SECONDS) } }
+        val ticket = requestSequence.incrementAndGet()
+        val target = renderer.context ?: return
+        prepareExecutor.execute { prepare(target, next, ticket) }
     }
 
     fun stepNext() = selectPreset(stepPreset(1))
@@ -440,6 +453,52 @@ class VisualizerController(
             }
     }
 
+    private fun prepare(target: SynesthesiaContext, wanted: Preset, ticket: Long) {
+        if (ticket != requestSequence.get()) return
+        val started = System.nanoTime()
+        val prepared = try {
+            target.preparePreset(wanted.file)
+        } catch (failure: Exception) {
+            Log.e(TAG, "preset prepare failed: ${wanted.name}", failure)
+            if (ticket == requestSequence.get()) mainHandler.post { errorMessage = failure.message }
+            return
+        }
+        Log.i(TAG, "preset prepared in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}")
+        if (ticket != requestSequence.get()) {
+            prepared.close()
+            return
+        }
+        pendingPrepared.getAndSet(prepared)?.close()
+        mainHandler.post {
+            val view = surface
+            if (view == null) {
+                pendingPrepared.compareAndSet(prepared, null)
+                prepared.close()
+            } else {
+                view.queueEvent { commit(target, prepared, wanted, ticket) }
+            }
+        }
+    }
+
+    private fun commit(target: SynesthesiaContext, prepared: PreparedPreset, wanted: Preset, ticket: Long) {
+        if (!pendingPrepared.compareAndSet(prepared, null)) {
+            prepared.close()
+            return
+        }
+        try {
+            if (ticket != requestSequence.get() || renderer.context !== target) return
+            val started = System.nanoTime()
+            runCatching { target.commitPreset(prepared, BLEND_SECONDS) }
+                .onSuccess { Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}") }
+                .onFailure {
+                    Log.e(TAG, "preset failed: ${wanted.name}", it)
+                    errorMessage = it.message
+                }
+        } finally {
+            prepared.close()
+        }
+    }
+
     private class LiveInput(val start: () -> Unit, val stop: () -> Unit)
 
     companion object {
@@ -451,6 +510,7 @@ class VisualizerController(
         private const val NANOS_PER_SECOND = 1.0e9
         private const val REFRESH_RATE_TOLERANCE = 1f
         private const val NANOS_PER_MILLI = 1_000_000L
+        private const val PREPARE_STACK_BYTES = 8L * 1024 * 1024
         private const val IMPORT_PROGRESS_STEP = 10
         private const val GL_VERSION_PREFIX = "GL_VERSION="
 

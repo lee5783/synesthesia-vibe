@@ -31,6 +31,7 @@ export class SynesthesiaCanvas {
     #glHandle = 0;
     #context = null;
     #preset = null;
+    #loadSerial = 0;
     #frameRequest = 0;
     #lastFrameMs = 0;
     #frameIntervalMs = 0;
@@ -133,14 +134,16 @@ export class SynesthesiaCanvas {
         return SynesthesiaContext.glStrings(this.#module);
     }
 
-    loadPreset(path, blendSeconds = 0) {
-        this.#requireContext().loadPreset(path, blendSeconds);
-        this.#preset = { path, text: null };
+    async loadPreset(path, blendSeconds = 0) {
+        const started = performance.now();
+        const prepared = this.#requireContext().preparePreset(path);
+        return this.#commitOnNextFrame(prepared, blendSeconds, { path, text: null }, performance.now() - started);
     }
 
-    loadPresetText(text, blendSeconds = 0) {
-        this.#requireContext().loadPresetText(text, blendSeconds);
-        this.#preset = { path: null, text };
+    async loadPresetText(text, blendSeconds = 0) {
+        const started = performance.now();
+        const prepared = this.#requireContext().preparePresetText(text);
+        return this.#commitOnNextFrame(prepared, blendSeconds, { path: null, text }, performance.now() - started);
     }
 
     pause() {
@@ -247,6 +250,29 @@ export class SynesthesiaCanvas {
             this.#startLoop();
         } catch (error) {
             this.#report(error);
+        }
+    }
+
+    async #commitOnNextFrame(prepared, blendSeconds, preset, prepareMs) {
+        const serial = ++this.#loadSerial;
+
+        try {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+
+            if (serial !== this.#loadSerial || this.#closed)
+                return null;
+
+            if (this.#context === null) {
+                this.#preset = preset;
+                return null;
+            }
+
+            const started = performance.now();
+            this.#requireContext().commitPreset(prepared, blendSeconds);
+            this.#preset = preset;
+            return { prepareMs, commitMs: performance.now() - started };
+        } finally {
+            prepared.free();
         }
     }
 

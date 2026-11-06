@@ -28,6 +28,13 @@
 
 struct sv_context;
 
+struct BdPreparedStage
+{
+    bool translated;
+    std::string hlsl;
+    render_gl::TranslatedShader shader;
+};
+
 struct BdGlPipeline
 {
     render_gl::FrameTargets targets;
@@ -68,7 +75,8 @@ struct BdGlPipeline
 void BdGlPipelineCreate(sv_context* ctx);
 void BdGlPipelineResize(sv_context* ctx);
 void BdGlPipelineDestroy(sv_context* ctx);
-std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetDir);
+std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetDir,
+    const BdPreparedStage* preparedWarp = nullptr, const BdPreparedStage* preparedComp = nullptr);
 
 void BdGlRenderFrame(sv_context* ctx, uint32_t targetFbo);
 void BdGlBeginFrame(sv_context* ctx);

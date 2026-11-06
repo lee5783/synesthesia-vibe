@@ -119,6 +119,7 @@ final class VisualizerModel: ObservableObject {
         Task { [weak self] in
             do {
                 try await self?.player.loadPreset(at: preset.url, blendSeconds: blend)
+            } catch is CancellationError {
             } catch {
                 self?.audioError = error.localizedDescription
             }

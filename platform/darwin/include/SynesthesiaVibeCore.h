@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 
 #import "SVContextConfiguration.h"
+#import "SVPreparedPreset.h"
 #import "SVContext.h"
 #import "SVAudioInput.h"
 #import "SVSystemAudioInput.h"

@@ -151,6 +151,43 @@ export class SynesthesiaContext {
         }
     }
 
+    preparePreset(path) {
+        const handle = this.#requireHandle();
+        const pointer = this.#module.stringToNewUTF8(path);
+
+        try {
+            return this.#wrapPrepared(this.#module._sv_web_prepare_preset(handle, pointer));
+        } finally {
+            this.#module._free(pointer);
+        }
+    }
+
+    preparePresetText(text) {
+        const handle = this.#requireHandle();
+        const bytes = new TextEncoder().encode(text);
+        const pointer = this.#module._malloc(bytes.length + 1);
+
+        try {
+            this.#module.HEAPU8.set(bytes, pointer);
+            this.#module.HEAPU8[pointer + bytes.length] = 0;
+            return this.#wrapPrepared(this.#module._sv_web_prepare_preset_text(handle, pointer, bytes.length));
+        } finally {
+            this.#module._free(pointer);
+        }
+    }
+
+    commitPreset(prepared, blendSeconds = 0) {
+        const handle = this.#requireHandle();
+        this.#check(this.#module._sv_web_commit_preset(handle, prepared.pointer, blendSeconds));
+    }
+
+    #wrapPrepared(pointer) {
+        if (pointer === 0)
+            throw new SynesthesiaError(this.#module._sv_web_prepare_status(), this.#module.UTF8ToString(this.#module._sv_web_validate_error()));
+
+        return new PreparedPreset(this.#module, pointer);
+    }
+
     pushPcm(interleaved, frames = null, channels = 2) {
         const handle = this.#requireHandle();
         const isFloat = interleaved instanceof Float32Array;
@@ -393,4 +430,34 @@ function requireSamples(interleaved, frames, channels) {
         throw new RangeError("frames * channels exceeds the buffer length");
 
     return count;
+}
+
+export class PreparedPreset {
+    #module;
+    #pointer;
+
+    constructor(module, pointer) {
+        this.#module = module;
+        this.#pointer = pointer;
+    }
+
+    get isFreed() {
+        return this.#pointer === 0;
+    }
+
+    get pointer() {
+        if (this.#pointer === 0)
+            throw new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "prepared preset already freed");
+
+        return this.#pointer;
+    }
+
+    free() {
+        if (this.#pointer === 0)
+            return;
+
+        const pointer = this.#pointer;
+        this.#pointer = 0;
+        this.#module._sv_web_free_prepared(pointer);
+    }
 }
