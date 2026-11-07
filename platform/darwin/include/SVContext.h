@@ -9,6 +9,7 @@
 #import <stdint.h>
 
 #import "SVContextConfiguration.h"
+#import "SVPreparedPreset.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -30,7 +31,7 @@ typedef struct SVAudioLevels {
     float treble;
 } SVAudioLevels;
 
-/* Every method except the PCM pushes, audioLevels and lastErrorMessage touches GL: call it on the render thread with the GL context current. */
+/* Every method except the PCM pushes, audioLevels, lastErrorMessage and the preparePreset methods touches GL: call it on the render thread with the GL context current. A preparePreset call may run on any thread with a stack of at least 1 MB, and invalidate waits for it. */
 @interface SVContext : NSObject
 
 @property (nonatomic, copy, readonly) SVContextConfiguration *configuration;
@@ -59,6 +60,16 @@ typedef struct SVAudioLevels {
 - (BOOL)loadPresetText:(NSString *)text
           blendSeconds:(float)blendSeconds
                  error:(NSError **)error NS_SWIFT_NAME(loadPreset(text:blendSeconds:));
+
+- (nullable SVPreparedPreset *)preparePresetAtURL:(NSURL *)url
+                                           error:(NSError **)error NS_SWIFT_NAME(preparePreset(at:));
+
+- (nullable SVPreparedPreset *)preparePresetText:(NSString *)text
+                                           error:(NSError **)error NS_SWIFT_NAME(preparePreset(text:));
+
+- (BOOL)commitPreparedPreset:(SVPreparedPreset *)prepared
+                blendSeconds:(float)blendSeconds
+                       error:(NSError **)error NS_SWIFT_NAME(commitPreset(_:blendSeconds:));
 
 - (void)pushPCMFloat:(const float *)interleaved
               frames:(NSUInteger)frames

@@ -10,6 +10,7 @@
 #include "gl_pipeline.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -263,7 +264,10 @@ static void BdConsumeDx9StartupDefaults(sv_context* ctx)
 
 extern "C" sv_context* sv_create(const sv_config* config)
 {
+    static std::atomic<uint64_t> s_nextSerial(1);
+
     sv_context* ctx = new sv_context();
+    ctx->serial = s_nextSerial.fetch_add(1);
 
     if (config != nullptr)
         ctx->config = *config;

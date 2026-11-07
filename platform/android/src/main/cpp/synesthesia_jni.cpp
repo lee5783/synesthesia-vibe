@@ -404,6 +404,65 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeLoadPresetText(JNIEnv* env, jc
     return sv_load_preset_memory(ToContext(handle), presetText.data(), presetText.size(), blendSeconds);
 }
 
+namespace
+{
+    jlong ReportPrepare(JNIEnv* env, sv_status status, sv_prepared_preset* prepared, const char* error, jobjectArray errorOut, jintArray statusOut)
+    {
+        if (statusOut != nullptr && env->GetArrayLength(statusOut) > 0)
+        {
+            jint value = status;
+            env->SetIntArrayRegion(statusOut, 0, 1, &value);
+        }
+
+        if (status != SV_OK && errorOut != nullptr && env->GetArrayLength(errorOut) > 0)
+        {
+            jbyteArray message = ToBytes(env, std::string(error));
+            env->SetObjectArrayElement(errorOut, 0, message);
+            env->DeleteLocalRef(message);
+        }
+
+        return status == SV_OK ? static_cast<jlong>(reinterpret_cast<intptr_t>(prepared)) : 0;
+    }
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativePreparePreset(JNIEnv* env, jclass, jlong handle, jbyteArray path, jobjectArray errorOut, jintArray statusOut)
+{
+    if (path == nullptr)
+        return ReportPrepare(env, SV_ERR_ARG, nullptr, "sv_prepare_preset: path is empty", errorOut, statusOut);
+
+    std::string presetPath = ToString(env, path);
+    char error[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = sv_prepare_preset(ToContext(handle), presetPath.c_str(), &prepared, error, sizeof(error));
+    return ReportPrepare(env, status, prepared, error, errorOut, statusOut);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativePreparePresetText(JNIEnv* env, jclass, jlong handle, jbyteArray text, jobjectArray errorOut, jintArray statusOut)
+{
+    if (text == nullptr)
+        return ReportPrepare(env, SV_ERR_ARG, nullptr, "sv_prepare_preset_memory: text is null", errorOut, statusOut);
+
+    std::string presetText = ToString(env, text);
+    char error[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = sv_prepare_preset_memory(ToContext(handle), presetText.data(), presetText.size(), &prepared, error, sizeof(error));
+    return ReportPrepare(env, status, prepared, error, errorOut, statusOut);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeCommitPreset(JNIEnv*, jclass, jlong handle, jlong prepared, jfloat blendSeconds)
+{
+    return sv_commit_preset(ToContext(handle), reinterpret_cast<sv_prepared_preset*>(static_cast<intptr_t>(prepared)), blendSeconds);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeFreePrepared(JNIEnv*, jclass, jlong prepared)
+{
+    sv_prepared_preset_free(reinterpret_cast<sv_prepared_preset*>(static_cast<intptr_t>(prepared)));
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeValidatePreset(JNIEnv* env, jclass, jbyteArray path, jobjectArray errorOut)
 {

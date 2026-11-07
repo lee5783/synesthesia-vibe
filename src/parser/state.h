@@ -118,6 +118,8 @@ public:
     //char  m_szPerPoint[MAX_BIGSTRING_LEN];
     NSEEL_CODEHANDLE m_pf_codehandle;
     //int   m_pp_codehandle;
+    NSEEL_CODEHANDLE m_init_codehandle;
+    bool  m_bInitCodeFailed;
 
 
 	// for per-frame expression evaluation:
@@ -177,6 +179,8 @@ public:
     char  m_szPerPoint[MAX_BIGSTRING_LEN];
     NSEEL_CODEHANDLE   m_pf_codehandle;
     NSEEL_CODEHANDLE   m_pp_codehandle;
+    NSEEL_CODEHANDLE   m_init_codehandle;
+    bool               m_bInitCodeFailed;
 
 	// for per-frame expression evaluation:
 		NSEEL_VMCTX m_pf_eel;
@@ -244,14 +248,20 @@ public:
 	CState();
 	~CState();
 
-	void Default(unsigned long ApplyFlags=STATE_ALL);
+	void Default(unsigned long ApplyFlags=STATE_ALL, bool bRandomize=true);
 	void Randomize(int nMode);
 	void StartBlendFrom(CState *s_from, float fAnimTime, float fTimespan);
 	bool Import(const wchar_t *szIniFile, float fTime, CState* pOldState, unsigned long ApplyFlags,
 	            const ParserCapabilities& caps, const char* defaultWarpPShaderText,
 	            const char* defaultCompPShaderText, const FrameInputs& frameInputs, ParserHostSink& hostSink);
+	bool ImportPrepare(const wchar_t *szIniFile, CState* pOldState, unsigned long ApplyFlags,
+	                   const ParserCapabilities& caps, const char* defaultWarpPShaderText,
+	                   const char* defaultCompPShaderText, ParserHostSink& hostSink);
+	void ImportCommit(float fTime, const FrameInputs& frameInputs);
 	bool Export(const wchar_t *szIniFile);
 	void RecompileExpressions(int flags, int bReInit, const FrameInputs& frameInputs, ParserHostSink& hostSink);
+	void CompileExpressions(int flags, int bReInit, ParserHostSink& hostSink);
+	void ExecuteInitCode(const FrameInputs& frameInputs);
     void GenDefaultWarpShader(const char* defaultWarpPShaderText);
     void GenDefaultCompShader(const char* defaultCompPShaderText);
 
@@ -377,6 +387,8 @@ public:
 	// for arbitrary function evaluation:
     NSEEL_CODEHANDLE				m_pf_codehandle;
     NSEEL_CODEHANDLE				m_pp_codehandle;
+    NSEEL_CODEHANDLE				m_pf_init_codehandle;
+    bool			m_bInitCodeFailed;
     char			m_szPerFrameInit[MAX_BIGSTRING_LEN];
     char			m_szPerFrameExpr[MAX_BIGSTRING_LEN];
     char			m_szPerPixelExpr[MAX_BIGSTRING_LEN];
@@ -457,6 +469,13 @@ public:
 
     float GetPresetStartTime() { return m_fPresetStartTime; }
     float m_fPresetStartTime;
+
+private:
+    bool ImportParse(const wchar_t *szIniFile, CState* pOldState, unsigned long ApplyFlags,
+                     const ParserCapabilities& caps, const char* defaultWarpPShaderText,
+                     const char* defaultCompPShaderText, ParserHostSink& hostSink);
+
+    unsigned long m_nImportApplyFlags;
 };
 
 #endif

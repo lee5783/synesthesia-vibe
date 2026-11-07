@@ -7,10 +7,12 @@
 
 #import "SVContext+Internal.h"
 #import "SVAudioInput+Internal.h"
+#import "SVPreparedPreset+Internal.h"
 
 #include <TargetConditionals.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <pthread.h>
 #include <string.h>
 
 #if TARGET_OS_OSX
@@ -173,6 +175,7 @@ namespace
 @implementation SVContext
 {
     sv_context* _context;
+    pthread_rwlock_t _prepareLock;
     float _playbackRate;
     float _debugInterval;
     BOOL _debugEnabled;
@@ -190,6 +193,7 @@ namespace
     if (self == nil)
         return nil;
 
+    pthread_rwlock_init(&_prepareLock, nullptr);
     _configuration = [configuration copy];
     _playbackRate = kDefaultPlaybackRate;
     _debugInterval = kDefaultDebugInterval;
@@ -283,6 +287,7 @@ namespace
 - (void)dealloc
 {
     [self invalidate];
+    pthread_rwlock_destroy(&_prepareLock);
 }
 
 - (sv_context *)rawContext
@@ -328,6 +333,64 @@ namespace
     NSData* bytes = [text dataUsingEncoding:NSUTF8StringEncoding];
     const sv_status status = sv_load_preset_memory(_context, static_cast<const char*>(bytes.bytes), bytes.length, blendSeconds);
     return [self failWithStatus:status error:error];
+}
+
+- (nullable SVPreparedPreset *)preparePresetAtURL:(NSURL *)url error:(NSError **)error
+{
+    char message[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = SV_ERR_ARG;
+    const char* failure = "sv_prepare_preset: context destroyed or path is not a file URL";
+
+    pthread_rwlock_rdlock(&_prepareLock);
+
+    if (_context != nullptr && url.isFileURL)
+    {
+        status = sv_prepare_preset(_context, url.fileSystemRepresentation, &prepared, message, sizeof(message));
+        failure = message;
+    }
+
+    pthread_rwlock_unlock(&_prepareLock);
+
+    if (!SVValidationResult(status, failure, error))
+        return nil;
+
+    return [[SVPreparedPreset alloc] initWithRawPrepared:prepared];
+}
+
+- (nullable SVPreparedPreset *)preparePresetText:(NSString *)text error:(NSError **)error
+{
+    char message[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = SV_ERR_ARG;
+    const char* failure = "sv_prepare_preset_memory: context destroyed";
+    NSData* bytes = [text dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    const char* utf8 = bytes.length > 0 ? static_cast<const char*>(bytes.bytes) : "";
+
+    pthread_rwlock_rdlock(&_prepareLock);
+
+    if (_context != nullptr)
+    {
+        status = sv_prepare_preset_memory(_context, utf8, bytes.length, &prepared, message, sizeof(message));
+        failure = message;
+    }
+
+    pthread_rwlock_unlock(&_prepareLock);
+
+    if (!SVValidationResult(status, failure, error))
+        return nil;
+
+    return [[SVPreparedPreset alloc] initWithRawPrepared:prepared];
+}
+
+- (BOOL)commitPreparedPreset:(SVPreparedPreset *)prepared blendSeconds:(float)blendSeconds error:(NSError **)error
+{
+    [self assertRenderThread];
+
+    if (_context == nullptr || prepared.rawPrepared == nullptr)
+        return [self failWithStatus:SV_ERR_ARG error:error];
+
+    return [self failWithStatus:sv_commit_preset(_context, prepared.rawPrepared, blendSeconds) error:error];
 }
 
 - (void)pushPCMFloat:(const float *)interleaved frames:(NSUInteger)frames channels:(NSInteger)channels
@@ -500,8 +563,10 @@ namespace
         return;
 
     [self assertRenderThread];
+    pthread_rwlock_wrlock(&_prepareLock);
     sv_destroy(_context);
     _context = nullptr;
+    pthread_rwlock_unlock(&_prepareLock);
 }
 
 @end

@@ -60,7 +60,15 @@ in the tables below.
 - **Preset validation:** `sv_validate_preset(path, error, len)` and
   `sv_validate_preset_memory(text, len, error, len)` check a preset without a context or GL. They return
   `SV_OK`, `SV_ERR_IO`, `SV_ERR_PARSE` (not a preset, or a code error) or `SV_ERR_SHADER` (a shader that
-  does not translate). Do not run them while a preset loads on another thread.
+  does not translate). They may run on any thread, once a context has been created in the process.
+- **Loading off the GL thread:** `sv_prepare_preset(ctx, path, &prepared, error, len)` and
+  `sv_prepare_preset_memory(ctx, text, len, &prepared, error, len)` read, parse, compile and translate a
+  preset on any thread while the context keeps rendering. `sv_commit_preset(ctx, prepared, blend_seconds)`
+  then finishes the load on the GL thread in a few milliseconds: init code, random values, the blend and
+  the GL programs. Errors and codes match `sv_load_preset*`; a prepare failure gives no handle and its text
+  goes to the error buffer, not `sv_last_error`. A handle commits once, to its own context; free it with
+  `sv_prepared_preset_free` on any thread, committed or not, even after `sv_destroy`. Do not destroy a
+  context while one of its prepares runs. Run prepares on a thread with at least 1 MB of stack.
 - **Stricter loading:** `sv_load_preset` and `sv_load_preset_memory` return `SV_ERR_PARSE` for an empty
   file or text that has no `[preset00]` section and no preset key.
 - **Debug info:** `sv_set_debug_callback(ctx, fn, user)` and `sv_set_debug_interval(ctx, seconds)` turn on
@@ -78,6 +86,7 @@ in the tables below.
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
 | Debug info | `SVContext` / `SVView` `debugInfoHandler`, `debugInterval`, `debugEnabled` (Swift `SynesthesiaPlayer.debugInfo`) | `SynesthesiaContext.setDebugListener`, `setDebugInterval`; `SynesthesiaRenderer.setDebugListener`, `setDebugInterval` | `SynesthesiaContext.onDebugInfo`, `setDebugInterval`; `SynesthesiaCanvas.onDebugInfo`, `setDebugInterval` |
 | Validation | `+[SVContext validatePresetAtURL:error:]`, `+validatePresetText:error:` (Swift `validatePreset(at:)`, `validatePreset(text:)`) | `SynesthesiaContext.validatePreset(File)`, `validatePresetText(String[, File])` | `SynesthesiaContext.validatePreset(module, path)`, `validatePresetText(module, text)` |
+| Prepare / commit | `-[SVContext preparePresetAtURL:error:]`, `-preparePresetText:error:` → `SVPreparedPreset`, then `-commitPreparedPreset:blendSeconds:error:` (Swift `preparePreset(at:)`, `preparePreset(text:)`, `commitPreset(_:blendSeconds:)`; `SynesthesiaPlayer.loadPreset(at:)` prepares off the main thread) | `SynesthesiaContext.preparePreset(File)`, `preparePresetText(String)` → `PreparedPreset` (close it), then `commitPreset(PreparedPreset, float)` on the GL thread | `SynesthesiaContext.preparePreset(path)`, `preparePresetText(text)` → `PreparedPreset` (call `free()`), then `commitPreset(prepared, blendSeconds)`; `SynesthesiaCanvas.loadPreset` / `loadPresetText` are async |
 
 - **Android:** `SynesthesiaRenderer.setPlaybackRate` can be called from any thread; the renderer applies
   it on the GL thread before the next frame. `validatePresetText` writes the text to a temporary file in
@@ -238,7 +247,8 @@ import `synesthesia-vibe.js`, or map the bare specifier `synesthesia-vibe` to it
 A minimal integration: `const module = await loadSynesthesiaModule()`, then
 `await new ResourceLoader(module).load("manifest.json")` for your presets and textures, then
 `const view = await SynesthesiaCanvas.create(canvas, module, { onError })` and
-`view.loadPreset("/synesthesiavibe/presets/<name>.milk")`. Audio comes from a user gesture through
+`await view.loadPreset("/synesthesiavibe/presets/<name>.milk")` (it prepares, waits one animation frame, then
+commits; the latest call wins). Audio comes from a user gesture through
 `AudioInput.fromMicrophone(view)`, `AudioInput.fromMediaElement(view, audioElement)` or a `WavFeeder`.
 The page needs a secure context (`localhost` or HTTPS) for the microphone; no COOP/COEP headers are
 required.

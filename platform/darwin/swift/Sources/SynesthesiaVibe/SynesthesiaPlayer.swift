@@ -35,7 +35,8 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     public private(set) weak var view: SVView?
 
     private weak var context: SVContext?
-    private var pendingLoads: [PendingLoad] = []
+    private var pendingLoad: PendingLoad?
+    private lazy var prepareWorker = PrepareWorker()
     private var wavFeeder: SVWavFeeder?
     private var wavFrameRemainder = 0.0
     private var audioInput: (any LiveAudioInput)?
@@ -48,7 +49,8 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     }
 
     deinit {
-        pendingLoads.forEach { $0.continuation.resume(throwing: CancellationError()) }
+        prepareWorker.stop()
+        pendingLoad?.continuation.resume(throwing: CancellationError())
         audioInput?.stop()
     }
 
@@ -86,6 +88,7 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.debugInfoHandler = nil
         self.view = nil
         context = nil
+        prepareWorker.cancelPending()
         audioInput?.stop()
         audioInput = nil
     }
@@ -147,36 +150,54 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
             load.continuation.resume(throwing: CancellationError())
             return
         }
-        pendingLoads.append(load)
+        pendingLoad?.continuation.resume(throwing: CancellationError())
+        pendingLoad = load
+        if let context {
+            startPreparing(load, with: context)
+        }
     }
 
     private func cancel(_ ticket: LoadTicket) {
         ticket.isCancelled = true
-        guard let index = pendingLoads.firstIndex(where: { $0.ticket === ticket }) else { return }
-        pendingLoads.remove(at: index).continuation.resume(throwing: CancellationError())
+        guard let load = pendingLoad, load.ticket === ticket else { return }
+        pendingLoad = nil
+        load.continuation.resume(throwing: CancellationError())
     }
 
-    private func performPendingLoads(with context: SVContext) {
-        guard !pendingLoads.isEmpty else { return }
-        let loads = pendingLoads
-        pendingLoads.removeAll()
-        for load in loads {
-            do {
-                try context.loadPreset(at: load.url, blendSeconds: load.blendSeconds)
-                presetName = load.url.deletingPathExtension().lastPathComponent
-                lastError = nil
-                load.continuation.resume()
-            } catch {
-                lastError = error
-                load.continuation.resume(throwing: error)
+    private func startPreparing(_ load: PendingLoad, with context: SVContext) {
+        load.preparingContext = context
+        prepareWorker.submit(url: load.url, context: context) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, self.pendingLoad === load else { return }
+                load.prepareResult = result
             }
         }
     }
 
+    private func performPendingLoads(with context: SVContext) {
+        guard let load = pendingLoad else { return }
+        guard load.preparingContext === context else {
+            startPreparing(load, with: context)
+            return
+        }
+        guard let result = load.prepareResult else { return }
+        pendingLoad = nil
+        do {
+            let prepared = try result.get()
+            try context.commitPreset(prepared, blendSeconds: load.blendSeconds)
+            presetName = load.url.deletingPathExtension().lastPathComponent
+            lastError = nil
+            load.continuation.resume()
+        } catch {
+            lastError = error
+            load.continuation.resume(throwing: error)
+        }
+    }
+
     private func failPendingLoads(with error: Error) {
-        let loads = pendingLoads
-        pendingLoads.removeAll()
-        loads.forEach { $0.continuation.resume(throwing: error) }
+        guard let load = pendingLoad else { return }
+        pendingLoad = nil
+        load.continuation.resume(throwing: error)
     }
 
     private func startAudioInput(with context: SVContext) throws {
@@ -264,9 +285,82 @@ private final class LoadTicket: @unchecked Sendable {
     var isCancelled = false
 }
 
-private struct PendingLoad {
+private final class PendingLoad {
     let ticket: LoadTicket
     let url: URL
     let blendSeconds: Float
     let continuation: CheckedContinuation<Void, Error>
+    weak var preparingContext: SVContext?
+    var prepareResult: Result<SVPreparedPreset, Error>?
+
+    init(ticket: LoadTicket, url: URL, blendSeconds: Float, continuation: CheckedContinuation<Void, Error>) {
+        self.ticket = ticket
+        self.url = url
+        self.blendSeconds = blendSeconds
+        self.continuation = continuation
+    }
+}
+
+private final class PrepareWorker: @unchecked Sendable {
+    private struct Request {
+        let url: URL
+        weak var context: SVContext?
+        let completion: (Result<SVPreparedPreset, Error>) -> Void
+    }
+
+    private static let stackBytes = 4 * 1024 * 1024
+
+    private let condition = NSCondition()
+    private var request: Request?
+    private var isStopped = false
+    private var thread: Thread?
+
+    func submit(url: URL, context: SVContext, completion: @escaping (Result<SVPreparedPreset, Error>) -> Void) {
+        condition.lock()
+        defer { condition.unlock() }
+        guard !isStopped else { return }
+        request = Request(url: url, context: context, completion: completion)
+        if thread == nil {
+            let worker = Thread { [self] in run() }
+            worker.name = "synesthesia-prepare"
+            worker.stackSize = Self.stackBytes
+            worker.qualityOfService = .userInitiated
+            thread = worker
+            worker.start()
+        }
+        condition.signal()
+    }
+
+    func cancelPending() {
+        condition.lock()
+        request = nil
+        condition.unlock()
+    }
+
+    func stop() {
+        condition.lock()
+        isStopped = true
+        request = nil
+        condition.signal()
+        condition.unlock()
+    }
+
+    private func run() {
+        while let next = takeRequest() {
+            guard let context = next.context else { continue }
+            next.completion(Result { try context.preparePreset(at: next.url) })
+        }
+    }
+
+    private func takeRequest() -> Request? {
+        condition.lock()
+        defer { condition.unlock() }
+        while request == nil && !isStopped {
+            condition.wait()
+        }
+        guard !isStopped else { return nil }
+        let next = request
+        request = nil
+        return next
+    }
 }

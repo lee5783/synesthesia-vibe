@@ -16,6 +16,7 @@ static const NSTimeInterval VisualizerFrameRateLogInterval = 1.0;
 static const NSTimeInterval VisualizerLaunchSnapshotDelay = 3.0;
 static const float VisualizerPresetBlendSeconds = 2.0f;
 static const double VisualizerLiveInputSampleRate = 44100.0;
+static const NSUInteger VisualizerPrepareThreadStackBytes = 4 * 1024 * 1024;
 
 static void VisualizerLog(NSString *message)
 {
@@ -75,6 +76,91 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     return @"unknown";
 }
 
+typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared, NSError *_Nullable error, NSTimeInterval milliseconds);
+
+@interface VisualizerPrepareWorker : NSObject
+- (void)submitURL:(NSURL *)url context:(SVContext *)context completion:(VisualizerPrepareCompletion)completion;
+- (void)stop;
+@end
+
+@implementation VisualizerPrepareWorker {
+    NSCondition *_condition;
+    NSThread *_thread;
+    BOOL _stopped;
+    NSURL *_url;
+    __weak SVContext *_context;
+    VisualizerPrepareCompletion _completion;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self != nil)
+        _condition = [[NSCondition alloc] init];
+    return self;
+}
+
+- (void)submitURL:(NSURL *)url context:(SVContext *)context completion:(VisualizerPrepareCompletion)completion
+{
+    [_condition lock];
+    if (!_stopped) {
+        _url = url;
+        _context = context;
+        _completion = [completion copy];
+        if (_thread == nil) {
+            _thread = [[NSThread alloc] initWithTarget:self selector:@selector(run) object:nil];
+            _thread.name = @"synesthesia-prepare";
+            _thread.stackSize = VisualizerPrepareThreadStackBytes;
+            _thread.qualityOfService = NSQualityOfServiceUserInitiated;
+            [_thread start];
+        }
+        [_condition signal];
+    }
+    [_condition unlock];
+}
+
+- (void)stop
+{
+    [_condition lock];
+    _stopped = YES;
+    _url = nil;
+    _context = nil;
+    _completion = nil;
+    [_condition signal];
+    [_condition unlock];
+}
+
+- (void)run
+{
+    while (YES) {
+        NSURL *url = nil;
+        SVContext *context = nil;
+        VisualizerPrepareCompletion completion = nil;
+        [_condition lock];
+        while (_url == nil && !_stopped)
+            [_condition wait];
+        if (_stopped) {
+            [_condition unlock];
+            return;
+        }
+        url = _url;
+        context = _context;
+        completion = _completion;
+        _url = nil;
+        _context = nil;
+        _completion = nil;
+        [_condition unlock];
+        if (context == nil)
+            continue;
+        NSTimeInterval start = NSProcessInfo.processInfo.systemUptime;
+        NSError *error = nil;
+        SVPreparedPreset *prepared = [context preparePresetAtURL:url error:&error];
+        completion(prepared, error, (NSProcessInfo.processInfo.systemUptime - start) * 1000.0);
+    }
+}
+
+@end
+
 @interface VisualizerViewController () <SVViewDelegate>
 
 @property (nonatomic, strong, readwrite) SVView *visualizerView;
@@ -82,6 +168,11 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 @property (nonatomic, copy, readwrite, nullable) NSURL *wavURL;
 @property (nonatomic, assign, readwrite) VisualizerAudioSource audioSource;
 @property (nonatomic, copy, nullable) NSURL *pendingPresetURL;
+@property (nonatomic, strong, nullable) SVPreparedPreset *preparedPreset;
+@property (nonatomic, strong, nullable) NSError *preparedPresetError;
+@property (nonatomic, assign) NSUInteger presetRequestSerial;
+@property (nonatomic, assign) BOOL presetPrepareStarted;
+@property (nonatomic, strong) VisualizerPrepareWorker *prepareWorker;
 @property (nonatomic, strong, nullable) SVWavFeeder *wavFeeder;
 @property (nonatomic, assign) double wavFrameRemainder;
 @property (nonatomic, strong, nullable) SVAudioInput *microphoneInput;
@@ -96,6 +187,11 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 @end
 
 @implementation VisualizerViewController
+
+- (void)dealloc
+{
+    [_prepareWorker stop];
+}
 
 - (void)loadView
 {
@@ -279,7 +375,11 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
 - (void)loadPresetAtURL:(NSURL *)url
 {
     VisualizerLog([NSString stringWithFormat:@"preset requested \"%@\"", url.lastPathComponent]);
+    self.presetRequestSerial += 1;
     self.pendingPresetURL = url;
+    self.preparedPreset = nil;
+    self.preparedPresetError = nil;
+    self.presetPrepareStarted = NO;
 }
 
 - (double)audioSampleRate
@@ -364,23 +464,55 @@ static NSString *VisualizerAudioSourceName(VisualizerAudioSource audioSource)
     self.systemAudioInput = nil;
 }
 
+- (void)startPreparingPresetAtURL:(NSURL *)url context:(SVContext *)context
+{
+    self.presetPrepareStarted = YES;
+    NSUInteger serial = self.presetRequestSerial;
+    if (self.prepareWorker == nil)
+        self.prepareWorker = [[VisualizerPrepareWorker alloc] init];
+    __weak VisualizerViewController *weakSelf = self;
+    [self.prepareWorker submitURL:url context:context completion:^(SVPreparedPreset *prepared, NSError *error, NSTimeInterval milliseconds) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            VisualizerViewController *strongSelf = weakSelf;
+            if (strongSelf == nil || serial != strongSelf.presetRequestSerial)
+                return;
+            VisualizerLog([NSString stringWithFormat:@"preset prepared \"%@\" in %.0f ms", url.lastPathComponent, milliseconds]);
+            strongSelf.preparedPreset = prepared;
+            strongSelf.preparedPresetError = error;
+        });
+    }];
+}
+
 - (void)applyPendingPresetWithContext:(SVContext *)context
 {
     NSURL *url = self.pendingPresetURL;
     if (url == nil)
         return;
 
+    if (!self.presetPrepareStarted) {
+        [self startPreparingPresetAtURL:url context:context];
+        return;
+    }
+
+    SVPreparedPreset *prepared = self.preparedPreset;
+    NSError *error = self.preparedPresetError;
+    if (prepared == nil && error == nil)
+        return;
+
     self.pendingPresetURL = nil;
-    NSError *error = nil;
+    self.preparedPreset = nil;
+    self.preparedPresetError = nil;
+    self.presetPrepareStarted = NO;
     float blendSeconds = self.presetURL == nil ? 0.0f : VisualizerPresetBlendSeconds;
-    if (![context loadPresetAtURL:url blendSeconds:blendSeconds error:&error]) {
+    NSTimeInterval start = NSProcessInfo.processInfo.systemUptime;
+    if (prepared == nil || ![context commitPreparedPreset:prepared blendSeconds:blendSeconds error:&error]) {
         VisualizerLog([NSString stringWithFormat:@"preset load failed \"%@\": %@", url.lastPathComponent, error.localizedDescription]);
         [self.delegate visualizerViewController:self didFailWithError:error];
         return;
     }
 
     self.presetURL = url;
-    VisualizerLog([NSString stringWithFormat:@"preset loaded \"%@\"", url.lastPathComponent]);
+    VisualizerLog([NSString stringWithFormat:@"preset loaded \"%@\" in %.0f ms", url.lastPathComponent, (NSProcessInfo.processInfo.systemUptime - start) * 1000.0]);
     [self.delegate visualizerViewController:self didLoadPresetAtURL:url];
 }
 

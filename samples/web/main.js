@@ -61,6 +61,8 @@ class SampleApp {
     #autoEnabled = false;
     #autoInterval = DEFAULT_AUTO_INTERVAL_SECONDS;
     #autoElapsed = 0;
+    #loadSerial = 0;
+    #requestedIndex = 0;
     #autoTimer = 0;
     #glVersion = "";
 
@@ -344,24 +346,39 @@ class SampleApp {
             return;
 
         const count = this.#presets.length;
-        this.#loadPreset((this.#presetIndex + step + count) % count, PRESET_BLEND_SECONDS);
+        this.#loadPreset((this.#requestedIndex + step + count) % count, PRESET_BLEND_SECONDS);
     }
 
-    #loadPreset(index, blendSeconds) {
+    async #loadPreset(index, blendSeconds) {
         if (this.#view === null || this.#busy || this.#presets[index] === undefined)
             return;
 
         const path = this.#presets[index];
+        const serial = ++this.#loadSerial;
+        this.#requestedIndex = index;
+        const view = this.#view;
 
         try {
-            this.#view.loadPreset(path, blendSeconds);
+            const timing = await view.loadPreset(path, blendSeconds);
+
+            if (serial !== this.#loadSerial || view !== this.#view)
+                return;
+
             this.#presetIndex = index;
             this.#presetName = presetName(path);
-            this.#reportLastError(this.#presetName);
-            console.info("preset loaded: " + this.#presetName);
+
+            if (timing !== null) {
+                this.#reportLastError(this.#presetName);
+                console.info("preset prepared in " + timing.prepareMs.toFixed(0) + " ms: " + this.#presetName);
+                console.info("preset loaded in " + timing.commitMs.toFixed(0) + " ms: " + this.#presetName);
+            }
         } catch (error) {
-            this.showError(error);
+            if (serial === this.#loadSerial)
+                this.showError(error);
         }
+
+        if (serial !== this.#loadSerial)
+            return;
 
         this.#autoElapsed = 0;
         this.#renderPlaylist();
@@ -513,7 +530,7 @@ class SampleApp {
             this.#autoElapsed = 0;
 
             if (count > 0)
-                this.#loadPreset((this.#presetIndex + 1) % count, PRESET_BLEND_SECONDS);
+                this.#loadPreset((this.#requestedIndex + 1) % count, PRESET_BLEND_SECONDS);
 
             return;
         }

@@ -635,19 +635,126 @@ void SetPresetPixelCenterOffset(int location, int width, int height)
         glUniform2f(location, kPixelCenterNdc / static_cast<float>(width), -kPixelCenterNdc / static_cast<float>(height));
 }
 
+TranslatedShaderCache::TranslatedShaderCache(size_t capacity)
+    : m_capacity(capacity)
+    , m_hits(0)
+    , m_misses(0)
+{
+}
+
+TranslatedShader TranslatedShaderCache::GetOrTranslate(PresetShaderStage stage, const char* szPresetShaderText)
+{
+    if (szPresetShaderText == nullptr)
+        szPresetShaderText = "";
+
+    std::string key(1, stage == PresetShaderStage::Warp ? 'w' : 'c');
+    key += szPresetShaderText;
+
+    TranslatedShader translated;
+
+    if (Find(key, translated))
+        return translated;
+
+    translated = TranslatePresetShader(stage, szPresetShaderText);
+
+    if (translated.ok)
+        Insert(key, translated);
+
+    return translated;
+}
+
+size_t TranslatedShaderCache::Size() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_entries.size();
+}
+
+int TranslatedShaderCache::HitCount() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_hits;
+}
+
+int TranslatedShaderCache::MissCount() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_misses;
+}
+
+bool TranslatedShaderCache::Find(const std::string& key, TranslatedShader& translated)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto found = m_entries.find(key);
+
+    if (found == m_entries.end())
+    {
+        m_misses++;
+        return false;
+    }
+
+    m_hits++;
+    m_order.splice(m_order.begin(), m_order, found->second.order);
+
+    translated.ok = true;
+    translated.glsl = found->second.glsl;
+    translated.error.clear();
+    return true;
+}
+
+void TranslatedShaderCache::Insert(const std::string& key, const TranslatedShader& translated)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (m_capacity == 0)
+        return;
+
+    const auto found = m_entries.find(key);
+
+    if (found != m_entries.end())
+    {
+        m_order.splice(m_order.begin(), m_order, found->second.order);
+        return;
+    }
+
+    while (m_entries.size() >= m_capacity)
+    {
+        const auto oldest = m_entries.find(*m_order.back());
+        m_order.pop_back();
+        m_entries.erase(oldest);
+    }
+
+    const auto inserted = m_entries.emplace(key, Entry()).first;
+    inserted->second.glsl = translated.glsl;
+    m_order.push_front(&inserted->first);
+    inserted->second.order = m_order.begin();
+}
+
 PresetProgram::PresetProgram()
     : lastUsed(0)
 {
 }
 
 PresetShaderCache::PresetShaderCache()
-    : m_hits(0)
+    : m_translations(nullptr)
+    , m_hits(0)
     , m_misses(0)
     , m_generation(0)
 {
 }
 
 const PresetProgram* PresetShaderCache::GetOrBuild(PresetShaderStage stage, const char* szPresetShaderText)
+{
+    return Lookup(stage, szPresetShaderText, nullptr);
+}
+
+const PresetProgram* PresetShaderCache::GetOrBuildTranslated(PresetShaderStage stage, const char* szPresetShaderText,
+    const TranslatedShader& translated)
+{
+    return Lookup(stage, szPresetShaderText, &translated);
+}
+
+const PresetProgram* PresetShaderCache::Lookup(PresetShaderStage stage, const char* szPresetShaderText,
+    const TranslatedShader* pTranslated)
 {
     if (szPresetShaderText == nullptr)
         szPresetShaderText = "";
@@ -668,7 +775,9 @@ const PresetProgram* PresetShaderCache::GetOrBuild(PresetShaderStage stage, cons
 
     PresetProgram program;
     program.lastUsed = m_generation;
-    const TranslatedShader translated = TranslatePresetShader(stage, szPresetShaderText);
+    const TranslatedShader translated = pTranslated != nullptr ? *pTranslated
+        : m_translations != nullptr ? m_translations->GetOrTranslate(stage, szPresetShaderText)
+        : TranslatePresetShader(stage, szPresetShaderText);
 
     if (!translated.ok)
     {

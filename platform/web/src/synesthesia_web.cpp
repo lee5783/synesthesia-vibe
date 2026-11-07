@@ -70,6 +70,7 @@ namespace
     std::string g_glStrings;
     std::string g_captureError;
     std::string g_validateError;
+    int g_prepareStatus = SV_OK;
     WebDebugReport g_debugReport = {};
     std::string g_debugPresetName;
     std::string g_debugLastError;
@@ -297,6 +298,41 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_load_preset_text(sv_context* ctx, con
         return SV_ERR_ARG;
 
     return sv_load_preset_memory(ctx, text, length, blendSeconds);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE sv_prepared_preset* sv_web_prepare_preset(sv_context* ctx, const char* path)
+{
+    char error[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = path == nullptr ? SV_ERR_ARG : sv_prepare_preset(ctx, path, &prepared, error, sizeof(error));
+    g_validateError = error;
+    g_prepareStatus = status;
+    return status == SV_OK ? prepared : nullptr;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE sv_prepared_preset* sv_web_prepare_preset_text(sv_context* ctx, const char* text, size_t length)
+{
+    char error[kValidateErrorBytes] = {};
+    sv_prepared_preset* prepared = nullptr;
+    sv_status status = text == nullptr ? SV_ERR_ARG : sv_prepare_preset_memory(ctx, text, length, &prepared, error, sizeof(error));
+    g_validateError = error;
+    g_prepareStatus = status;
+    return status == SV_OK ? prepared : nullptr;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_prepare_status()
+{
+    return g_prepareStatus;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_commit_preset(sv_context* ctx, sv_prepared_preset* prepared, float blendSeconds)
+{
+    return sv_commit_preset(ctx, prepared, blendSeconds);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_free_prepared(sv_prepared_preset* prepared)
+{
+    sv_prepared_preset_free(prepared);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_validate_preset(const char* path)

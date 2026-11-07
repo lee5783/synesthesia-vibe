@@ -231,6 +231,9 @@ CState::CState()
 	wcsncpy(m_szDesc, L"", sizeof(m_szDesc)/sizeof(m_szDesc[0]));
 	m_pf_codehandle = NULL;
 	m_pp_codehandle = NULL;
+	m_pf_init_codehandle = NULL;
+	m_bInitCodeFailed = false;
+	m_nImportApplyFlags = STATE_ALL;
 	m_pf_eel = NSEEL_VM_alloc();
 	m_pv_eel = NSEEL_VM_alloc();
     int i;
@@ -238,12 +241,16 @@ CState::CState()
     {
         m_wave[i].m_pf_codehandle = NULL;
         m_wave[i].m_pp_codehandle = NULL;
+        m_wave[i].m_init_codehandle = NULL;
+        m_wave[i].m_bInitCodeFailed = false;
 				m_wave[i].m_pf_eel=NSEEL_VM_alloc();
 				m_wave[i].m_pp_eel=NSEEL_VM_alloc();
     }
     for (i=0; i<MAX_CUSTOM_SHAPES; i++)
     {
         m_shape[i].m_pf_codehandle = NULL;
+        m_shape[i].m_init_codehandle = NULL;
+        m_shape[i].m_bInitCodeFailed = false;
 				m_shape[i].m_pf_eel=NSEEL_VM_alloc();
         //m_shape[i].m_pp_codehandle = NULL;
     }
@@ -550,7 +557,7 @@ void CState::RegisterBuiltInVariables(int flags)
         }
     }
 }
-void CState::Default(unsigned long ApplyFlags)
+void CState::Default(unsigned long ApplyFlags, bool bRandomize)
 {
 	// DON'T FORGET TO ADD NEW VARIABLES TO BLEND FUNCTION, IMPORT, and EXPORT AS WELL!!!!!!!!
 
@@ -737,7 +744,8 @@ void CState::Default(unsigned long ApplyFlags)
         m_nCompPSVersion   = 0;
     }
 
-    RandomizePresetVars();
+    if (bRandomize)
+        RandomizePresetVars();
 
 	FreeVarsAndCode();
 }
@@ -1326,6 +1334,41 @@ bool CState::Import(const wchar_t *szIniFile, float fTime, CState* pOldState, un
     // plugin-wide state that is not safe to mutate concurrently.
     std::lock_guard<std::mutex> importLock(g_presetImportMutex);
 
+    const bool bOpened = ImportParse(szIniFile, pOldState, ApplyFlags, caps, defaultWarpPShaderText,
+                                     defaultCompPShaderText, hostSink);
+    ImportCommit(fTime, frameInputs);
+    return bOpened;
+}
+
+bool CState::ImportPrepare(const wchar_t *szIniFile, CState* pOldState, unsigned long ApplyFlags,
+                           const ParserCapabilities& caps, const char* defaultWarpPShaderText,
+                           const char* defaultCompPShaderText, ParserHostSink& hostSink)
+{
+    std::lock_guard<std::mutex> importLock(g_presetImportMutex);
+
+    return ImportParse(szIniFile, pOldState, ApplyFlags, caps, defaultWarpPShaderText, defaultCompPShaderText,
+                       hostSink);
+}
+
+void CState::ImportCommit(float fTime, const FrameInputs& frameInputs)
+{
+    RandomizePresetVars();
+
+    if ( (m_nImportApplyFlags & STATE_GENERAL) &&
+         (m_nImportApplyFlags & STATE_MOTION) &&
+         (m_nImportApplyFlags & STATE_WAVE)
+        )
+    {
+        m_fPresetStartTime = fTime;
+    }
+
+    ExecuteInitCode(frameInputs);
+}
+
+bool CState::ImportParse(const wchar_t *szIniFile, CState* pOldState, unsigned long ApplyFlags,
+                         const ParserCapabilities& caps, const char* defaultWarpPShaderText,
+                         const char* defaultCompPShaderText, ParserHostSink& hostSink)
+{
     // if any ApplyFlags are missing, the settings will be copied from pOldState.  =)
 
     if (!pOldState)
@@ -1342,8 +1385,10 @@ bool CState::Import(const wchar_t *szIniFile, float fTime, CState* pOldState, un
         FreeVarsAndCode(false);
     }
 
+    m_nImportApplyFlags = ApplyFlags;
+
     // apply defaults for the stuff we will overwrite.
-    Default(ApplyFlags);//RandomizePresetVars();
+    Default(ApplyFlags, false);//RandomizePresetVars();
 
     GetFast_CLEAR();
 
@@ -1352,8 +1397,6 @@ bool CState::Import(const wchar_t *szIniFile, float fTime, CState* pOldState, un
          (ApplyFlags & STATE_WAVE)        // updates the name, but mash-ups don't.
         )
     {
-        m_fPresetStartTime = fTime;
-
 	    // extract a description of the preset from the filename
 	    {
 		    // copy get the filename (without the path)
@@ -1530,7 +1573,7 @@ bool CState::Import(const wchar_t *szIniFile, float fTime, CState* pOldState, un
     m_nMinPSVersion = std::min(m_nWarpPSVersion, m_nCompPSVersion);
 
 
-	RecompileExpressions(0xFFFFFFFF, 1, frameInputs, hostSink);
+	CompileExpressions(0xFFFFFFFF, 1, hostSink);
 
     fclose(f);
 
@@ -1563,6 +1606,13 @@ void CState::FreeVarsAndCode(bool bFree)
     		NSEEL_code_free(m_pp_codehandle);
 		m_pp_codehandle = NULL;
 	}
+	if (m_pf_init_codehandle)
+	{
+        if (bFree)
+    		NSEEL_code_free(m_pf_init_codehandle);
+		m_pf_init_codehandle = NULL;
+	}
+    m_bInitCodeFailed = false;
 
     int i;
     for (i=0; i<MAX_CUSTOM_WAVES; i++)
@@ -1579,6 +1629,13 @@ void CState::FreeVarsAndCode(bool bFree)
                 NSEEL_code_free(m_wave[i].m_pp_codehandle);
             m_wave[i].m_pp_codehandle = NULL;
         }
+	    if (m_wave[i].m_init_codehandle)
+        {
+            if (bFree)
+                NSEEL_code_free(m_wave[i].m_init_codehandle);
+            m_wave[i].m_init_codehandle = NULL;
+        }
+        m_wave[i].m_bInitCodeFailed = false;
     }
 
     for (i=0; i<MAX_CUSTOM_SHAPES; i++)
@@ -1589,6 +1646,13 @@ void CState::FreeVarsAndCode(bool bFree)
                 NSEEL_code_free(m_shape[i].m_pf_codehandle);
             m_shape[i].m_pf_codehandle = NULL;
         }
+	    if (m_shape[i].m_init_codehandle)
+        {
+            if (bFree)
+                NSEEL_code_free(m_shape[i].m_init_codehandle);
+            m_shape[i].m_init_codehandle = NULL;
+        }
+        m_shape[i].m_bInitCodeFailed = false;
 	    /*if (m_shape[i].m_pp_codehandle)
         {
             freeCode(m_shape[i].m_pp_codehandle);
@@ -1633,6 +1697,101 @@ void CState::StripLinefeedCharsAndComments(char *src, char *dest)
 
 void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& frameInputs, ParserHostSink& hostSink)
 {
+    CompileExpressions(flags, bReInit, hostSink);
+    ExecuteInitCode(frameInputs);
+}
+
+void CState::ExecuteInitCode(const FrameInputs& frameInputs)
+{
+    if (m_pf_init_codehandle)
+    {
+	    // now execute the code, save the values of q1..q32, and clean up the code!
+
+        // This state may be compiled asynchronously as m_pNewState.
+        // Populate the variables for the state being initialized,
+        // rather than whichever state is currently on screen.
+        LoadPerFrameEvallibVars(this, frameInputs);
+
+	    NSEEL_code_execute(m_pf_init_codehandle);
+
+        for (int vi=0; vi<NUM_Q_VAR; vi++)
+	        q_values_after_init_code[vi] = *var_pf_q[vi];
+        monitor_after_init_code = *var_pf_monitor;
+
+	    NSEEL_code_free(m_pf_init_codehandle);
+	    m_pf_init_codehandle = NULL;
+    }
+    else if (m_bInitCodeFailed)
+    {
+        for (int vi=0; vi<NUM_Q_VAR; vi++)
+	        q_values_after_init_code[vi] = 0;
+        monitor_after_init_code = 0;
+    }
+    m_bInitCodeFailed = false;
+
+    for (int i=0; i<MAX_CUSTOM_WAVES; i++)
+    {
+        if (m_wave[i].m_init_codehandle)
+        {
+	        // now execute the code, save the values of t1..t8, and clean up the code!
+
+            LoadCustomWavePerFrameEvallibVars(this, i, frameInputs);
+                // note: q values at this point will actually be same as
+                //       q_values_after_init_code[], since no per-frame code
+                //       has actually been executed yet!
+
+	        NSEEL_code_execute(m_wave[i].m_init_codehandle);
+
+            for (int vi=0; vi<NUM_T_VAR; vi++)
+	            m_wave[i].t_values_after_init_code[vi] = *m_wave[i].var_pf_t[vi];
+
+	        NSEEL_code_free(m_wave[i].m_init_codehandle);
+	        m_wave[i].m_init_codehandle = NULL;
+        }
+        else if (m_wave[i].m_bInitCodeFailed)
+        {
+            int vi;
+            for (vi=0; vi<NUM_Q_VAR; vi++)
+                *m_wave[i].var_pf_q[vi] = q_values_after_init_code[vi];
+            for (vi=0; vi<NUM_T_VAR; vi++)
+	            m_wave[i].t_values_after_init_code[vi] = 0;
+        }
+        m_wave[i].m_bInitCodeFailed = false;
+    }
+
+    for (int i=0; i<MAX_CUSTOM_SHAPES; i++)
+    {
+        if (m_shape[i].m_init_codehandle)
+        {
+	        // now execute the code, save the values of q1..q8, and clean up the code!
+
+            LoadCustomShapePerFrameEvallibVars(this, i, 0, frameInputs);
+                // note: q values at this point will actually be same as
+                //       q_values_after_init_code[], since no per-frame code
+                //       has actually been executed yet!
+
+	        NSEEL_code_execute(m_shape[i].m_init_codehandle);
+
+            for (int vi=0; vi<NUM_T_VAR; vi++)
+                m_shape[i].t_values_after_init_code[vi] = *m_shape[i].var_pf_t[vi];
+
+	        NSEEL_code_free(m_shape[i].m_init_codehandle);
+	        m_shape[i].m_init_codehandle = NULL;
+        }
+        else if (m_shape[i].m_bInitCodeFailed)
+        {
+            int vi;
+            for (vi=0; vi<NUM_Q_VAR; vi++)
+                *m_shape[i].var_pf_q[vi] = q_values_after_init_code[vi];
+            for (vi=0; vi<NUM_T_VAR; vi++)
+	            m_shape[i].t_values_after_init_code[vi] = 0;
+        }
+        m_shape[i].m_bInitCodeFailed = false;
+    }
+}
+
+void CState::CompileExpressions(int flags, int bReInit, ParserHostSink& hostSink)
+{
     // before we get started, if we redo the init code for the preset, we have to redo
     // other things too, because q1-q8 could change.
     if ((flags & RECOMPILE_PRESET_CODE) && bReInit)
@@ -1654,6 +1813,12 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
 		    NSEEL_code_free(m_pp_codehandle);
 		    m_pp_codehandle = NULL;
 	    }
+	    if (m_pf_init_codehandle)
+	    {
+		    NSEEL_code_free(m_pf_init_codehandle);
+		    m_pf_init_codehandle = NULL;
+	    }
+	    m_bInitCodeFailed = false;
     }
     if (flags & RECOMPILE_WAVE_CODE)
     {
@@ -1669,6 +1834,12 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
 			    NSEEL_code_free(m_wave[i].m_pp_codehandle);
 			    m_wave[i].m_pp_codehandle = NULL;
 		    }
+		    if (m_wave[i].m_init_codehandle)
+		    {
+			    NSEEL_code_free(m_wave[i].m_init_codehandle);
+			    m_wave[i].m_init_codehandle = NULL;
+		    }
+		    m_wave[i].m_bInitCodeFailed = false;
         }
     }
     if (flags & RECOMPILE_SHAPE_CODE)
@@ -1680,6 +1851,12 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
 			    NSEEL_code_free(m_shape[i].m_pf_codehandle);
 			    m_shape[i].m_pf_codehandle = NULL;
 		    }
+		    if (m_shape[i].m_init_codehandle)
+		    {
+			    NSEEL_code_free(m_shape[i].m_init_codehandle);
+			    m_shape[i].m_init_codehandle = NULL;
+		    }
+		    m_shape[i].m_bInitCodeFailed = false;
 		    /*if (m_shape[i].m_pp_codehandle)
 		    {
 			    freeCode(m_shape[i].m_pp_codehandle);
@@ -1783,39 +1960,17 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
 
         if (flags & RECOMPILE_PRESET_CODE)
         {
-            // 1. compile AND EXECUTE preset init code
+            // 1. compile preset init code
 		    StripLinefeedCharsAndComments(m_szPerFrameInit, buf);
 	        if (buf[0] && bReInit)
 	        {
-		        NSEEL_CODEHANDLE	pf_codehandle_init;
-
-			    if ( ! (pf_codehandle_init = NSEEL_code_compile(m_pf_eel, buf)))
+			    if ( ! (m_pf_init_codehandle = NSEEL_code_compile(m_pf_eel, buf)))
 			    {
                     wchar_t buf[1024];
 				    swprintf(buf, sizeof(buf)/sizeof(buf[0]), ParserLangStringPresetInitCodeError(), m_szDesc);
                     hostSink.ReportError(buf, 6.0f, ERR_PRESET, true);
 
-                    for (int vi=0; vi<NUM_Q_VAR; vi++)
-				        q_values_after_init_code[vi] = 0;
-                    monitor_after_init_code = 0;
-			    }
-			    else
-			    {
-				    // now execute the code, save the values of q1..q32, and clean up the code!
-
-                    // This state may be compiled asynchronously as m_pNewState.
-                    // Populate the variables for the state being initialized,
-                    // rather than whichever state is currently on screen.
-                    LoadPerFrameEvallibVars(this, frameInputs);
-
-				    NSEEL_code_execute(pf_codehandle_init);
-
-                    for (int vi=0; vi<NUM_Q_VAR; vi++)
-				        q_values_after_init_code[vi] = *var_pf_q[vi];
-                    monitor_after_init_code = *var_pf_monitor;
-
-				    NSEEL_code_free(pf_codehandle_init);
-				    pf_codehandle_init = NULL;
+                    m_bInitCodeFailed = true;
 			    }
 	        }
 
@@ -1850,41 +2005,19 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
         {
             for (int i=0; i<MAX_CUSTOM_WAVES; i++)
             {
-                // 1. compile AND EXECUTE custom waveform init code
+                // 1. compile custom waveform init code
 		        StripLinefeedCharsAndComments(m_wave[i].m_szInit, buf);
 	            if (buf[0] && bReInit)
                 {
 		            #ifndef _NO_EXPR_
 		            {
-		                NSEEL_CODEHANDLE	codehandle_temp;
-			            if ( ! (codehandle_temp = NSEEL_code_compile(m_wave[i].m_pf_eel, buf)))
+			            if ( ! (m_wave[i].m_init_codehandle = NSEEL_code_compile(m_wave[i].m_pf_eel, buf)))
 			            {
                             wchar_t buf[1024];
 				            swprintf(buf, sizeof(buf)/sizeof(buf[0]), ParserLangStringWaveInitCodeError(), m_szDesc, i);
                             hostSink.ReportError(buf, 6.0f, ERR_PRESET, true);
 
-                            int vi;
-                            for (vi=0; vi<NUM_Q_VAR; vi++)
-                                *m_wave[i].var_pf_q[vi] = q_values_after_init_code[vi];
-                            for (vi=0; vi<NUM_T_VAR; vi++)
-				                m_wave[i].t_values_after_init_code[vi] = 0;
-			            }
-			            else
-			            {
-				            // now execute the code, save the values of t1..t8, and clean up the code!
-
-                            LoadCustomWavePerFrameEvallibVars(this, i, frameInputs);
-                                // note: q values at this point will actually be same as
-                                //       q_values_after_init_code[], since no per-frame code
-                                //       has actually been executed yet!
-
-				            NSEEL_code_execute(codehandle_temp);
-
-                            for (int vi=0; vi<NUM_T_VAR; vi++)
-				                m_wave[i].t_values_after_init_code[vi] = *m_wave[i].var_pf_t[vi];
-
-				            NSEEL_code_free(codehandle_temp);
-				            codehandle_temp = NULL;
+                            m_wave[i].m_bInitCodeFailed = true;
 			            }
 		            }
                     #endif
@@ -1922,41 +2055,19 @@ void CState::RecompileExpressions(int flags, int bReInit, const FrameInputs& fra
         {
             for (int i=0; i<MAX_CUSTOM_SHAPES; i++)
             {
-                // 1. compile AND EXECUTE custom shape init code
+                // 1. compile custom shape init code
 		        StripLinefeedCharsAndComments(m_shape[i].m_szInit, buf);
 	            if (buf[0] && bReInit)
                 {
 		            #ifndef _NO_EXPR_
 		            {
-		                NSEEL_CODEHANDLE	codehandle_temp;
-			            if ( ! (codehandle_temp = NSEEL_code_compile(m_shape[i].m_pf_eel, buf)))
+			            if ( ! (m_shape[i].m_init_codehandle = NSEEL_code_compile(m_shape[i].m_pf_eel, buf)))
 			            {
                             wchar_t buf[1024];
 				            swprintf(buf, sizeof(buf)/sizeof(buf[0]), ParserLangStringShapeInitCodeError(), m_szDesc, i);
                             hostSink.ReportError(buf, 6.0f, ERR_PRESET, true);
 
-                            int vi;
-                            for (vi=0; vi<NUM_Q_VAR; vi++)
-                                *m_shape[i].var_pf_q[vi] = q_values_after_init_code[vi];
-                            for (vi=0; vi<NUM_T_VAR; vi++)
-				                m_shape[i].t_values_after_init_code[vi] = 0;
-			            }
-			            else
-			            {
-				            // now execute the code, save the values of q1..q8, and clean up the code!
-
-                            LoadCustomShapePerFrameEvallibVars(this, i, 0, frameInputs);
-                                // note: q values at this point will actually be same as
-                                //       q_values_after_init_code[], since no per-frame code
-                                //       has actually been executed yet!
-
-				            NSEEL_code_execute(codehandle_temp);
-
-                            for (int vi=0; vi<NUM_T_VAR; vi++)
-                                m_shape[i].t_values_after_init_code[vi] = *m_shape[i].var_pf_t[vi];
-
-				            NSEEL_code_free(codehandle_temp);
-				            codehandle_temp = NULL;
+                            m_shape[i].m_bInitCodeFailed = true;
 			            }
 		            }
 		            #endif
