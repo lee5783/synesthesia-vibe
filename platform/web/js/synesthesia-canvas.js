@@ -130,6 +130,10 @@ export class SynesthesiaCanvas {
         return this.#lost;
     }
 
+    presetInfo() {
+        return this.#requireContext().presetInfo();
+    }
+
     glStrings() {
         return SynesthesiaContext.glStrings(this.#module);
     }

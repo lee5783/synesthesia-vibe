@@ -676,6 +676,7 @@ if(SYNESTHESIA_VIBE_GL_DEV)
   if(SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS)
     add_subdirectory(tests/tools/render-gl-selftest)
     add_subdirectory(tests/tools/shader-translate-check)
+    add_subdirectory(tests/tools/preset-survey)
 
     find_package(glfw3 CONFIG REQUIRED)
     find_package(OpenGL REQUIRED)

@@ -71,10 +71,16 @@ in the tables below.
   context while one of its prepares runs. Run prepares on a thread with at least 1 MB of stack.
 - **Stricter loading:** `sv_load_preset` and `sv_load_preset_memory` return `SV_ERR_PARSE` for an empty
   file or text that has no `[preset00]` section and no preset key.
+- **Preset info:** `sv_get_preset_info(ctx, &info)` reports the loaded preset's `preset_version`, the warp and
+  composite pixel-shader versions (0 none, 2 `ps_2_0`, 3 `ps_2_x`, 4 `ps_3_0`), whether each stage runs a shader,
+  and a `fallback_reason` text when a stage that asked for a shader runs fixed-function instead. It may be called
+  from any thread and returns the values of the last successful load or commit. The reason may contain newlines,
+  and reads `no GL pipeline` or `GL pipeline not ready` when there is no usable GL pipeline. A file name ending in
+  `.milk2` (MilkDrop 3 double preset) is rejected with `SV_ERR_PARSE` by load, prepare and validate.
 - **Debug info:** `sv_set_debug_callback(ctx, fn, user)` and `sv_set_debug_interval(ctx, seconds)` turn on
   a periodic `sv_debug_info` report. It is off by default and costs nothing when off. The interval defaults
   to 1 s, and `<= 0` disables it. The report covers time, frame, measured FPS, simulation steps per frame,
-  playback rate, preset version and name, shader stages, audio levels, sizes, GL errors since the last
+  playback rate, preset version and name, shader stages and their pixel-shader versions, the fallback reason, audio levels, sizes, GL errors since the last
   report, the limiter and the last error. It is delivered from `sv_render_frame` on wall-clock time, so a
   paused view whose loop stops also stops reporting. The struct and its strings are valid only during the
   callback. Deterministic captures are unaffected.

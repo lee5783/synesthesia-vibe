@@ -99,7 +99,7 @@ class VisualizerController(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val debugListener = SynesthesiaContext.DebugListener { info ->
-        Log.i(TAG, "debug report thread=${Thread.currentThread().name} time=${info["time"]} frame=${info["frame"]} display_fps=${info["display_fps"]}")
+        Log.i(TAG, "debug report thread=${Thread.currentThread().name} time=${info["time"]} frame=${info["frame"]} display_fps=${info["display_fps"]} warp_ps_version=${info["warp_ps_version"]} comp_ps_version=${info["comp_ps_version"]} fallback_reason='${info["fallback_reason"]}'")
         mainHandler.post {
             if (debugEnabled) debugInfo = info
         }
@@ -446,11 +446,27 @@ class VisualizerController(
     private fun load(target: SynesthesiaContext, wanted: Preset, blendSeconds: Float) {
         val started = System.nanoTime()
         runCatching { target.loadPreset(wanted.file, blendSeconds) }
-            .onSuccess { Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}") }
+            .onSuccess {
+                Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}")
+                logPresetInfo(target, wanted)
+            }
             .onFailure {
                 Log.e(TAG, "preset failed: ${wanted.name}", it)
                 errorMessage = it.message
             }
+    }
+
+    private fun logPresetInfo(target: SynesthesiaContext, wanted: Preset) {
+        runCatching { target.presetInfo() }
+            .onSuccess { info ->
+                fun path(shader: Any?) = if (shader == 1) "translated" else "fixed-function"
+                Log.i(
+                    TAG,
+                    "preset info ${wanted.name} version=${info["preset_version"]} warp_ps=${info["warp_ps_version"]} comp_ps=${info["comp_ps_version"]} " +
+                        "warp=${path(info["warp_shader"])} comp=${path(info["comp_shader"])} fallback_reason='${info["fallback_reason"]}'"
+                )
+            }
+            .onFailure { Log.e(TAG, "preset info failed: ${wanted.name}", it) }
     }
 
     private fun prepare(target: SynesthesiaContext, wanted: Preset, ticket: Long) {
@@ -489,7 +505,10 @@ class VisualizerController(
             if (ticket != requestSequence.get() || renderer.context !== target) return
             val started = System.nanoTime()
             runCatching { target.commitPreset(prepared, BLEND_SECONDS) }
-                .onSuccess { Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}") }
+                .onSuccess {
+                    Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}")
+                    logPresetInfo(target, wanted)
+                }
                 .onFailure {
                     Log.e(TAG, "preset failed: ${wanted.name}", it)
                     errorMessage = it.message

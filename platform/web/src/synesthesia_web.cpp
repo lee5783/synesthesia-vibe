@@ -61,11 +61,26 @@ namespace
         int32_t feedbackFormat;
         int32_t glErrors;
         int32_t limiterActive;
+        int32_t warpPsVersion;
+        int32_t compPsVersion;
     };
+
+    struct WebPresetInfo
+    {
+        int32_t presetVersion;
+        int32_t warpPsVersion;
+        int32_t compPsVersion;
+        int32_t warpShader;
+        int32_t compShader;
+    };
+
+    static_assert(sizeof(WebPresetInfo) == 20, "preset info layout is read by synesthesia-context.js");
 
     static_assert(offsetof(WebDebugReport, time) == 0, "debug report layout is read by synesthesia-context.js");
     static_assert(offsetof(WebDebugReport, sequence) == 8, "debug report layout is read by synesthesia-context.js");
     static_assert(offsetof(WebDebugReport, limiterActive) == 88, "debug report layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebDebugReport, warpPsVersion) == 92, "debug report layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebDebugReport, compPsVersion) == 96, "debug report layout is read by synesthesia-context.js");
 
     std::string g_glStrings;
     std::string g_captureError;
@@ -74,6 +89,8 @@ namespace
     WebDebugReport g_debugReport = {};
     std::string g_debugPresetName;
     std::string g_debugLastError;
+    std::string g_debugFallbackReason;
+    std::string g_presetFallbackReason;
 
     void* GetGlProcAddress(const char* name)
     {
@@ -109,8 +126,11 @@ namespace
         report.feedbackFormat = info->feedback_format;
         report.glErrors = info->gl_errors;
         report.limiterActive = info->limiter_active;
+        report.warpPsVersion = info->warp_ps_version;
+        report.compPsVersion = info->comp_ps_version;
         g_debugPresetName = ToString(info->preset_name);
         g_debugLastError = ToString(info->last_error);
+        g_debugFallbackReason = ToString(info->fallback_reason);
         ++report.sequence;
     }
 
@@ -429,6 +449,35 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_debug_preset_name()
 extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_debug_last_error()
 {
     return g_debugLastError.c_str();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_debug_fallback_reason()
+{
+    return g_debugFallbackReason.c_str();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_get_preset_info(sv_context* ctx, void* out)
+{
+    sv_preset_info info = {};
+    sv_status status = sv_get_preset_info(ctx, &info);
+
+    if (status != SV_OK)
+        return status;
+
+    g_presetFallbackReason = ToString(info.fallback_reason);
+
+    if (out != nullptr)
+    {
+        WebPresetInfo layout = { info.preset_version, info.warp_ps_version, info.comp_ps_version, info.warp_shader, info.comp_shader };
+        std::memcpy(out, &layout, sizeof(layout));
+    }
+
+    return SV_OK;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_preset_fallback_reason()
+{
+    return g_presetFallbackReason.c_str();
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE const char* sv_web_last_error(sv_context* ctx)

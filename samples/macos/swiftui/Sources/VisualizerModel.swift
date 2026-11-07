@@ -43,6 +43,7 @@ final class VisualizerModel: ObservableObject {
     private var ticker: AnyCancellable?
     private var contextProbe: AnyCancellable?
     private var playerChanges: AnyCancellable?
+    private var presetInfoLog: AnyCancellable?
     private var previousSource = AudioSource.wav
     private var folderScopeURL: URL?
     private var flatLevelSeconds = 0.0
@@ -105,6 +106,14 @@ final class VisualizerModel: ObservableObject {
         )
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
+        presetInfoLog = player.$presetName
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] name in
+                guard let player = self?.player else { return }
+                let info = player.presetInfo
+                NSLog("%@", "MacSwiftUISample: preset info \"\(name)\" version=\(info.presetVersion) warp_ps=\(info.warpPixelShaderVersion) comp_ps=\(info.compPixelShaderVersion) warp_shader=\(info.warpShaderActive) comp_shader=\(info.compShaderActive) fallback=\"\(player.presetFallbackReason)\"")
+            }
         startTicker()
         startWav()
         if let first = library.presets.first {
