@@ -513,6 +513,10 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 
     self.presetURL = url;
     VisualizerLog([NSString stringWithFormat:@"preset loaded \"%@\" in %.0f ms", url.lastPathComponent, (NSProcessInfo.processInfo.systemUptime - start) * 1000.0]);
+    SVPresetInfo info = context.presetInfo;
+    VisualizerLog([NSString stringWithFormat:@"preset info \"%@\" version=%ld warp_ps=%ld comp_ps=%ld warp_shader=%d comp_shader=%d fallback=\"%@\"",
+                   url.lastPathComponent, (long)info.presetVersion, (long)info.warpPixelShaderVersion, (long)info.compPixelShaderVersion,
+                   info.warpShaderActive, info.compShaderActive, context.presetFallbackReason]);
     [self.delegate visualizerViewController:self didLoadPresetAtURL:url];
 }
 

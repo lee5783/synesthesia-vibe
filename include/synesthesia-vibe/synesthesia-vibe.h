@@ -86,6 +86,20 @@ void        sv_push_pcm_float(sv_context* ctx, const float* interleaved, size_t 
 void        sv_push_pcm_s16(sv_context* ctx, const int16_t* interleaved, size_t frames, int channels);
 void        sv_get_audio_levels(sv_context* ctx, float* out_bass, float* out_mid, float* out_treb);
 
+/* The shader path the current preset took, as recorded when its load or commit bound the GL programs. *_ps_version is the pixel-shader version the preset asked for: 0 = none (fixed-function by format), 2 = ps_2_0, 3 = ps_2_x, 4 = ps_3_0. *_shader is 1 when that stage runs a shader, 0 when it runs fixed-function or there is no GL. */
+typedef struct sv_preset_info
+{
+    int  preset_version;       /* MILKDROP_PRESET_VERSION of the current preset; 0 before any load */
+    int  warp_ps_version;
+    int  comp_ps_version;
+    int  warp_shader;
+    int  comp_shader;
+    char fallback_reason[256]; /* NUL-terminated, truncated; why a stage that asked for a shader runs fixed-function instead, naming the stage; "no GL pipeline" or "GL pipeline not ready" without a usable GL pipeline; may contain newlines; "" when there is no fallback */
+} sv_preset_info;
+
+/* Fills *out and returns SV_OK, or SV_ERR_ARG when ctx or out is NULL. May run on any thread, concurrently with rendering and loads: it reads a copy the engine refreshes under a lock at each load or commit, never the live preset. A load that fails before it replaces the preset leaves the previous preset's values. */
+sv_status   sv_get_preset_info(sv_context* ctx, sv_preset_info* out);
+
 /* sv_init_gl, sv_create, sv_load_preset*, sv_commit_preset, sv_resize, sv_render_frame, sv_set_debug_callback, sv_set_debug_interval and sv_destroy must run on the thread whose GL context is current; width/height are backing pixels. */
 void        sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t target_fbo);
 void        sv_resize(sv_context* ctx, int width, int height);
@@ -117,10 +131,13 @@ typedef struct sv_debug_info
     int      limiter_active;      /* 1 = luminance limiter configured on; 0 = off or no GL */
     const char* preset_name;      /* the preset file name without its extension; "" before any load and for sv_load_preset_memory */
     const char* last_error;       /* same as sv_last_error */
+    int      warp_ps_version;     /* the current preset's warp pixel-shader version: 0 = fixed-function by format, 2 = ps_2_0, 3 = ps_2_x, 4 = ps_3_0; 0 before any load */
+    int      comp_ps_version;     /* same for the composite stage */
+    const char* fallback_reason;  /* why a stage that asked for a shader runs fixed-function instead, naming the stage; "no GL pipeline" or "GL pipeline not ready" without a usable GL pipeline; may contain newlines; "" when there is no fallback */
 } sv_debug_info;
 
 /* Runs synchronously inside sv_render_frame, on the thread that calls it, once the report interval has elapsed in wall-clock time; it also runs while paused if the host keeps calling sv_render_frame.
-   It may call sv_set_debug_callback, sv_set_debug_interval, sv_get_audio_levels and sv_last_error. It must not call sv_destroy, sv_load_preset*, sv_pause, sv_resume, sv_resize, sv_render_frame or sv_dump_frame_state. */
+   It may call sv_set_debug_callback, sv_set_debug_interval, sv_get_audio_levels, sv_get_preset_info and sv_last_error. It must not call sv_destroy, sv_load_preset*, sv_pause, sv_resume, sv_resize, sv_render_frame or sv_dump_frame_state. */
 typedef void (*sv_debug_fn)(const sv_debug_info* info, void* user);
 
 /* Off by default. NULL disables. Takes effect on the next sv_render_frame and restarts the report window. */

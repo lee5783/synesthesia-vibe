@@ -44,8 +44,9 @@ namespace
     constexpr float kClearAlpha = 1.0f;
     constexpr size_t kLogReadChunk = 512;
     constexpr size_t kValidateErrorBytes = 1024;
-    constexpr int kDebugValueCount = 21;
-    constexpr int kDebugStringCount = 2;
+    constexpr int kDebugValueCount = 23;
+    constexpr int kDebugStringCount = 3;
+    constexpr int kPresetInfoValueCount = 5;
 
     void ForwardStderrToLogcat(int readFd)
     {
@@ -120,6 +121,7 @@ namespace
         double values[kDebugValueCount] = {};
         std::string presetName;
         std::string lastError;
+        std::string fallbackReason;
     };
 
     std::mutex g_debugSinksMutex;
@@ -179,8 +181,11 @@ namespace
         v[18] = info->feedback_format;
         v[19] = info->gl_errors;
         v[20] = info->limiter_active;
+        v[21] = info->warp_ps_version;
+        v[22] = info->comp_ps_version;
         sink->presetName = info->preset_name != nullptr ? info->preset_name : "";
         sink->lastError = info->last_error != nullptr ? info->last_error : "";
+        sink->fallbackReason = info->fallback_reason != nullptr ? info->fallback_reason : "";
         ++sink->sequence;
     }
 
@@ -603,6 +608,7 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeReadDebugInfo(JNIEnv* env, jcl
     double values[kDebugValueCount];
     std::string presetName;
     std::string lastError;
+    std::string fallbackReason;
     jlong sequence;
 
     {
@@ -610,6 +616,7 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeReadDebugInfo(JNIEnv* env, jcl
         std::copy(sink->values, sink->values + kDebugValueCount, values);
         presetName = sink->presetName;
         lastError = sink->lastError;
+        fallbackReason = sink->fallbackReason;
         sequence = sink->sequence;
     }
 
@@ -623,7 +630,36 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeReadDebugInfo(JNIEnv* env, jcl
     env->SetObjectArrayElement(stringsOut, 1, error);
     env->DeleteLocalRef(error);
 
+    jbyteArray reason = ToBytes(env, fallbackReason);
+    env->SetObjectArrayElement(stringsOut, 2, reason);
+    env->DeleteLocalRef(reason);
+
     return sequence;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeGetPresetInfo(JNIEnv* env, jclass, jlong handle, jintArray valuesOut, jobjectArray reasonOut)
+{
+    if (valuesOut == nullptr || reasonOut == nullptr)
+        return SV_ERR_ARG;
+
+    if (env->GetArrayLength(valuesOut) < kPresetInfoValueCount || env->GetArrayLength(reasonOut) < 1)
+        return SV_ERR_ARG;
+
+    sv_preset_info info = {};
+    sv_status status = sv_get_preset_info(ToContext(handle), &info);
+
+    if (status != SV_OK)
+        return status;
+
+    jint values[kPresetInfoValueCount] = {info.preset_version, info.warp_ps_version, info.comp_ps_version, info.warp_shader, info.comp_shader};
+    env->SetIntArrayRegion(valuesOut, 0, kPresetInfoValueCount, values);
+
+    jbyteArray reason = ToBytes(env, std::string(info.fallback_reason));
+    env->SetObjectArrayElement(reasonOut, 0, reason);
+    env->DeleteLocalRef(reason);
+
+    return status;
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

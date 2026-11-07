@@ -30,8 +30,9 @@ public final class SynesthesiaContext implements AutoCloseable {
         System.loadLibrary("synesthesiavibe-jni");
     }
 
-    private static final int DEBUG_VALUE_COUNT = 21;
-    private static final int DEBUG_STRING_COUNT = 2;
+    private static final int DEBUG_VALUE_COUNT = 23;
+    private static final int DEBUG_STRING_COUNT = 3;
+    private static final int PRESET_INFO_VALUE_COUNT = 5;
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private volatile DebugListener debugListener;
@@ -318,6 +319,28 @@ public final class SynesthesiaContext implements AutoCloseable {
         return new AudioLevels(levels[0], levels[1], levels[2]);
     }
 
+    public Map<String, Object> presetInfo() throws SynesthesiaException {
+        int[] values = new int[PRESET_INFO_VALUE_COUNT];
+        byte[][] reason = new byte[1][];
+        int status;
+        lock.readLock().lock();
+        try {
+            status = nativeGetPresetInfo(requireHandle(), values, reason);
+        } finally {
+            lock.readLock().unlock();
+        }
+        if (status != SynesthesiaException.SV_OK)
+            throw new SynesthesiaException(status, "sv_get_preset_info failed");
+        Map<String, Object> info = new HashMap<>();
+        info.put("preset_version", values[0]);
+        info.put("warp_ps_version", values[1]);
+        info.put("comp_ps_version", values[2]);
+        info.put("warp_shader", values[3]);
+        info.put("comp_shader", values[4]);
+        info.put("fallback_reason", decode(reason[0]));
+        return info;
+    }
+
     public String lastError() {
         lock.readLock().lock();
         try {
@@ -451,8 +474,11 @@ public final class SynesthesiaContext implements AutoCloseable {
         info.put("feedback_format", (int) values[18]);
         info.put("gl_errors", (int) values[19]);
         info.put("limiter_active", (int) values[20]);
+        info.put("warp_ps_version", (int) values[21]);
+        info.put("comp_ps_version", (int) values[22]);
         info.put("preset_name", decode(strings[0]));
         info.put("last_error", decode(strings[1]));
+        info.put("fallback_reason", decode(strings[2]));
         return info;
     }
 
@@ -521,6 +547,8 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native long nativeDebugSequence(long handle);
 
     private static native long nativeReadDebugInfo(long handle, double[] valuesOut, byte[][] stringsOut);
+
+    private static native int nativeGetPresetInfo(long handle, int[] valuesOut, byte[][] reasonOut);
 
     private static native byte[] nativeLastError(long handle);
 

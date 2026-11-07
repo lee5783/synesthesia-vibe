@@ -112,6 +112,15 @@ final class VisualizerStore: ObservableObject {
             }
             .store(in: &cancellables)
         player.$presetName
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] name in
+                guard let player = self?.player else { return }
+                let info = player.presetInfo
+                NSLog("%@", "iOSSwiftUISample: preset info \"\(name)\" version=\(info.presetVersion) warp_ps=\(info.warpPixelShaderVersion) comp_ps=\(info.compPixelShaderVersion) warp_shader=\(info.warpShaderActive) comp_shader=\(info.compShaderActive) fallback=\"\(player.presetFallbackReason)\"")
+            }
+            .store(in: &cancellables)
+        player.$presetName
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in

@@ -349,6 +349,14 @@ class SampleApp {
         this.#loadPreset((this.#requestedIndex + step + count) % count, PRESET_BLEND_SECONDS);
     }
 
+    #logPresetInfo(view) {
+        const info = view.presetInfo();
+        console.info("preset info: " + this.#presetName + " version=" + info.preset_version
+            + " warpPs=" + info.warp_ps_version + " compPs=" + info.comp_ps_version
+            + " warpShader=" + info.warp_shader + " compShader=" + info.comp_shader
+            + " fallback=\"" + info.fallback_reason + "\"");
+    }
+
     async #loadPreset(index, blendSeconds) {
         if (this.#view === null || this.#busy || this.#presets[index] === undefined)
             return;
@@ -371,6 +379,7 @@ class SampleApp {
                 this.#reportLastError(this.#presetName);
                 console.info("preset prepared in " + timing.prepareMs.toFixed(0) + " ms: " + this.#presetName);
                 console.info("preset loaded in " + timing.commitMs.toFixed(0) + " ms: " + this.#presetName);
+                this.#logPresetInfo(view);
             }
         } catch (error) {
             if (serial === this.#loadSerial)

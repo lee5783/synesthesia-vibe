@@ -523,6 +523,12 @@ namespace
         const unsigned int glErrors = glErrorTotal - ctx->debugGlErrorBase;
         ctx->debugGlErrorBase = glErrorTotal;
 
+        BdPresetInfoSnapshot presetInfo;
+        {
+            std::lock_guard<std::mutex> lock(ctx->presetInfoMutex);
+            presetInfo = ctx->presetInfo;
+        }
+
         sv_debug_info info;
         info.time = static_cast<double>(static_cast<float>(ctx->timeModel.GetTime()) - ctx->startTime);
         info.frame = static_cast<uint32_t>(ctx->frame);
@@ -547,6 +553,9 @@ namespace
         info.limiter_active = gl != nullptr && gl->limiterEnabled ? 1 : 0;
         info.preset_name = ctx->presetName.c_str();
         info.last_error = ctx->lastError.c_str();
+        info.warp_ps_version = presetInfo.warpPsVersion;
+        info.comp_ps_version = presetInfo.compPsVersion;
+        info.fallback_reason = presetInfo.fallbackReason;
 
         fn(&info, user);
     }

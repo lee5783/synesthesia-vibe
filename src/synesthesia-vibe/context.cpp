@@ -345,6 +345,7 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->debugWindowFrame = 0;
     ctx->debugGlErrorBase = 0;
     ctx->presetVersion = 0;
+    memset(&ctx->presetInfo, 0, sizeof(ctx->presetInfo));
 
     ctx->nGridX = ctx->meshX;
     ctx->nGridY = ctx->meshY;

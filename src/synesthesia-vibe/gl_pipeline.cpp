@@ -115,7 +115,7 @@ namespace
     }
 
     std::string BdGlBindStage(sv_context* ctx, render_gl::PresetShaderStage stage, const char* stageName, const char* shaderText,
-        const BdPreparedStage* prepared, render_gl::PresetShaderInputs& inputs, bool& active)
+        const BdPreparedStage* prepared, render_gl::PresetShaderInputs& inputs, bool& active, std::string& fallback)
     {
         BdGlPipeline* gl = ctx->gl;
         active = false;
@@ -154,6 +154,7 @@ namespace
         std::string message(stageName);
         message += " shader unavailable, using fixed-function path: ";
         message += program->error.empty() ? "program has no linked shader" : program->error;
+        fallback = message;
         return message;
     }
 }
@@ -275,10 +276,27 @@ void BdGlPipelineDestroy(sv_context* ctx)
 }
 
 std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetDir,
-    const BdPreparedStage* preparedWarp, const BdPreparedStage* preparedComp)
+    const BdPreparedStage* preparedWarp, const BdPreparedStage* preparedComp, std::string* fallbackReason)
 {
-    if (ctx == nullptr || ctx->gl == nullptr || !ctx->gl->ready)
+    if (fallbackReason != nullptr)
+        fallbackReason->clear();
+
+    if (ctx == nullptr)
         return std::string();
+
+    if (ctx->gl == nullptr || !ctx->gl->ready)
+    {
+        if (ctx->gl != nullptr)
+        {
+            ctx->gl->warpShaderActive = false;
+            ctx->gl->compShaderActive = false;
+        }
+
+        if (fallbackReason != nullptr)
+            *fallbackReason = ctx->gl == nullptr ? "no GL pipeline" : "GL pipeline not ready";
+
+        return std::string();
+    }
 
     BdGlPipeline* gl = ctx->gl;
 
@@ -288,17 +306,19 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
     gl->picker.Rescan();
 
     std::string errors;
+    std::string warpFallback;
+    std::string compFallback;
 
     if (ctx->state->m_nWarpPSVersion > 0)
         errors += BdGlBindStage(ctx, render_gl::PresetShaderStage::Warp, "warp", ctx->state->m_szWarpShadersText,
-            preparedWarp, gl->warpInputs, gl->warpShaderActive);
+            preparedWarp, gl->warpInputs, gl->warpShaderActive, warpFallback);
     else
         gl->warpShaderActive = false;
 
     if (ctx->state->m_nCompPSVersion > 0)
     {
         const std::string compErrors = BdGlBindStage(ctx, render_gl::PresetShaderStage::Composite, "comp",
-            ctx->state->m_szCompShadersText, preparedComp, gl->compInputs, gl->compShaderActive);
+            ctx->state->m_szCompShadersText, preparedComp, gl->compInputs, gl->compShaderActive, compFallback);
 
         if (!errors.empty() && !compErrors.empty())
             errors += "; ";
@@ -312,6 +332,16 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
 
     gl->presetCache.TrimUnused();
     gl->disk.TrimUnused();
+
+    if (fallbackReason != nullptr)
+    {
+        *fallbackReason = warpFallback;
+
+        if (!warpFallback.empty() && !compFallback.empty())
+            *fallbackReason += "; ";
+
+        *fallbackReason += compFallback;
+    }
 
     if (!errors.empty())
         fprintf(stderr, "synesthesia-vibe: %s\n", errors.c_str());

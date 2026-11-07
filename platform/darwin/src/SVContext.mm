@@ -112,6 +112,8 @@ namespace
             @"preset_version": @(info->preset_version),
             @"warp_shader": @(info->warp_shader),
             @"comp_shader": @(info->comp_shader),
+            @"warp_ps_version": @(info->warp_ps_version),
+            @"comp_ps_version": @(info->comp_ps_version),
             @"bass": @(info->bass),
             @"mid": @(info->mid),
             @"treb": @(info->treb),
@@ -126,7 +128,8 @@ namespace
             @"gl_errors": @(info->gl_errors),
             @"limiter_active": @(info->limiter_active),
             @"preset_name": SVDebugString(info->preset_name),
-            @"last_error": SVDebugString(info->last_error)
+            @"last_error": SVDebugString(info->last_error),
+            @"fallback_reason": SVDebugString(info->fallback_reason)
         };
     }
 
@@ -522,6 +525,34 @@ namespace
         sv_get_audio_levels(_context, &levels.bass, &levels.mid, &levels.treble);
 
     return levels;
+}
+
+- (SVPresetInfo)presetInfo
+{
+    SVPresetInfo result = { 0, 0, 0, NO, NO };
+    sv_preset_info info = {};
+
+    if (_context != nullptr && sv_get_preset_info(_context, &info) == SV_OK)
+    {
+        result.presetVersion = info.preset_version;
+        result.warpPixelShaderVersion = info.warp_ps_version;
+        result.compPixelShaderVersion = info.comp_ps_version;
+        result.warpShaderActive = info.warp_shader != 0;
+        result.compShaderActive = info.comp_shader != 0;
+    }
+
+    return result;
+}
+
+- (NSString *)presetFallbackReason
+{
+    sv_preset_info info = {};
+
+    if (_context == nullptr || sv_get_preset_info(_context, &info) != SV_OK)
+        return @"";
+
+    info.fallback_reason[sizeof(info.fallback_reason) - 1] = '\0';
+    return SVDebugString(info.fallback_reason);
 }
 
 - (nullable NSString *)lastErrorMessage

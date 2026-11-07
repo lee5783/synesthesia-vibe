@@ -12,6 +12,8 @@ import Foundation
 public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sendable {
 
     @Published public private(set) var presetName: String?
+    @Published public private(set) var presetInfo = SVPresetInfo()
+    @Published public private(set) var presetFallbackReason = ""
     @Published public var isPaused = false {
         didSet { view?.isPaused = isPaused }
     }
@@ -186,6 +188,8 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
             let prepared = try result.get()
             try context.commitPreset(prepared, blendSeconds: load.blendSeconds)
             presetName = load.url.deletingPathExtension().lastPathComponent
+            presetInfo = context.presetInfo
+            presetFallbackReason = context.presetFallbackReason
             lastError = nil
             load.continuation.resume()
         } catch {

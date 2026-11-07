@@ -97,6 +97,31 @@ namespace
         ctx->lastError = message;
     }
 
+    const char kMilk2Message[] = ".milk2 (MilkDrop 3 double preset) is not supported";
+
+    bool BdHasMilk2Extension(const char* path)
+    {
+        const size_t length = strlen(path);
+        static const char extension[] = ".milk2";
+        const size_t extensionLength = sizeof(extension) - 1;
+
+        if (length < extensionLength)
+            return false;
+
+        for (size_t i = 0; i < extensionLength; i++)
+        {
+            char c = path[length - extensionLength + i];
+
+            if (c >= 'A' && c <= 'Z')
+                c = static_cast<char>(c - 'A' + 'a');
+
+            if (c != extension[i])
+                return false;
+        }
+
+        return true;
+    }
+
     bool BdStartsWith(const char* text, size_t len, const char* prefix)
     {
         const size_t prefixLen = strlen(prefix);
@@ -359,6 +384,12 @@ namespace
             return SV_ERR_ARG;
         }
 
+        if (BdHasMilk2Extension(path))
+        {
+            message = kMilk2Message;
+            return SV_ERR_PARSE;
+        }
+
         const std::wstring nativePath = BdToNativePath(BdUtf8ToWide(path));
 
         if (!BdFileExists(nativePath.c_str()))
@@ -454,6 +485,12 @@ namespace
             return SV_ERR_ARG;
         }
 
+        if (BdHasMilk2Extension(path))
+        {
+            message = kMilk2Message;
+            return SV_ERR_PARSE;
+        }
+
         std::vector<char> includeText(kBeatdropResourceTextBytes);
         std::vector<char> defaultWarpText(kBeatdropResourceTextBytes);
         std::vector<char> defaultCompText(kBeatdropResourceTextBytes);
@@ -510,6 +547,21 @@ namespace
         return SV_OK;
     }
 
+    void BdPublishPresetInfo(sv_context* ctx, int presetVersion, const std::string& fallbackReason)
+    {
+        BdPresetInfoSnapshot snapshot;
+        memset(&snapshot, 0, sizeof(snapshot));
+        snapshot.presetVersion = presetVersion;
+        snapshot.warpPsVersion = ctx->state->m_nWarpPSVersion;
+        snapshot.compPsVersion = ctx->state->m_nCompPSVersion;
+        snapshot.warpShader = ctx->gl != nullptr && ctx->gl->warpShaderActive ? 1 : 0;
+        snapshot.compShader = ctx->gl != nullptr && ctx->gl->compShaderActive ? 1 : 0;
+        BdCopyString(snapshot.fallbackReason, sizeof(snapshot.fallbackReason), fallbackReason.c_str());
+
+        std::lock_guard<std::mutex> lock(ctx->presetInfoMutex);
+        ctx->presetInfo = snapshot;
+    }
+
     void BdCommitPreparedPreset(sv_context* ctx, sv_prepared_preset& prepared, float blendSeconds)
     {
         ctx->hostSink.Clear();
@@ -532,7 +584,9 @@ namespace
 
         ctx->presetVersion = prepared.presetVersion;
         ctx->presetName = prepared.presetName;
-        ctx->lastError = BdGlPreparePresetShaders(ctx, prepared.textureDirectory, &prepared.warp, &prepared.comp);
+        std::string fallbackReason;
+        ctx->lastError = BdGlPreparePresetShaders(ctx, prepared.textureDirectory, &prepared.warp, &prepared.comp, &fallbackReason);
+        BdPublishPresetInfo(ctx, prepared.presetVersion, fallbackReason);
     }
 }
 
@@ -544,6 +598,12 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
         if (ctx != nullptr)
             BdSetPresetError(ctx, "sv_load_preset: path is empty");
         return SV_ERR_ARG;
+    }
+
+    if (BdHasMilk2Extension(path))
+    {
+        BdSetPresetError(ctx, kMilk2Message);
+        return SV_ERR_PARSE;
     }
 
     BdLoadShaderResources(ctx->resourcePath, ctx->shaderIncludeText, ctx->defaultWarpShaderText, ctx->defaultCompShaderText);
@@ -592,7 +652,9 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
     else
         ctx->presetName.clear();
 
-    ctx->lastError = BdGlPreparePresetShaders(ctx, textureDirectory);
+    std::string fallbackReason;
+    ctx->lastError = BdGlPreparePresetShaders(ctx, textureDirectory, nullptr, nullptr, &fallbackReason);
+    BdPublishPresetInfo(ctx, ctx->presetVersion, fallbackReason);
 
     if (ctx->gl != nullptr && !ctx->gl->ready)
     {
@@ -794,4 +856,24 @@ extern "C" sv_status sv_commit_preset(sv_context* ctx, sv_prepared_preset* prepa
 extern "C" void sv_prepared_preset_free(sv_prepared_preset* prepared)
 {
     delete prepared;
+}
+
+extern "C" sv_status sv_get_preset_info(sv_context* ctx, sv_preset_info* out)
+{
+    if (ctx == nullptr || out == nullptr)
+        return SV_ERR_ARG;
+
+    BdPresetInfoSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lock(ctx->presetInfoMutex);
+        snapshot = ctx->presetInfo;
+    }
+
+    out->preset_version = snapshot.presetVersion;
+    out->warp_ps_version = snapshot.warpPsVersion;
+    out->comp_ps_version = snapshot.compPsVersion;
+    out->warp_shader = snapshot.warpShader;
+    out->comp_shader = snapshot.compShader;
+    BdCopyString(out->fallback_reason, sizeof(out->fallback_reason), snapshot.fallbackReason);
+    return SV_OK;
 }

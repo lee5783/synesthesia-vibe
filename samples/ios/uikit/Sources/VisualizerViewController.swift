@@ -145,6 +145,15 @@ final class VisualizerViewController: UIViewController {
             }
             .store(in: &cancellables)
         session.player.$presetName
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] name in
+                guard let player = self?.session.player else { return }
+                let info = player.presetInfo
+                NSLog("%@", "iOSUIKitSample: preset info \"\(name)\" version=\(info.presetVersion) warp_ps=\(info.warpPixelShaderVersion) comp_ps=\(info.compPixelShaderVersion) warp_shader=\(info.warpShaderActive) comp_shader=\(info.compShaderActive) fallback=\"\(player.presetFallbackReason)\"")
+            }
+            .store(in: &cancellables)
+        session.player.$presetName
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.readGLVersion()

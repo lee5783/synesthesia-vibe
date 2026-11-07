@@ -31,6 +31,7 @@ namespace
     const char kResourceRootRelativePath[] = "ref-src/beatdrop/BeatDrop/BeatDrop Resources";
     const char kBadPresetRelativePath[] = "resources/mvp-presets/this-preset-does-not-exist.milk";
     const char kRendererUnavailable[] = "renderer unavailable";
+    const char kNoGlPipeline[] = "no GL pipeline";
     constexpr float kDebugIntervalSeconds = 1.0e-6f;
     constexpr int kDebugReportsBeforeDisable = 5;
 
@@ -223,6 +224,59 @@ int main(int argc, char** argv)
     {
         fprintf(stderr, "synesthesia-vibe-headless: FAIL unexpected preset load status, sv_last_error=\"%s\"\n",
             sv_last_error(ctx));
+        sv_destroy(ctx);
+        return EXIT_FAILURE;
+    }
+
+    sv_preset_info info;
+    memset(&info, 0, sizeof(info));
+    const sv_status infoStatus = sv_get_preset_info(ctx, &info);
+    printf("synesthesia-vibe-headless: no-gl sv_get_preset_info status=%d (%s) preset_version=%d warp_ps_version=%d "
+        "comp_ps_version=%d warp_shader=%d comp_shader=%d fallback_reason=\"%s\"\n",
+        static_cast<int>(infoStatus), BdStatusName(infoStatus), info.preset_version, info.warp_ps_version,
+        info.comp_ps_version, info.warp_shader, info.comp_shader, info.fallback_reason);
+
+    if (infoStatus != SV_OK || info.preset_version != 100 || info.warp_shader != 0 || info.comp_shader != 0
+        || strcmp(info.fallback_reason, kNoGlPipeline) != 0 || sv_get_preset_info(ctx, nullptr) != SV_ERR_ARG)
+    {
+        fprintf(stderr, "synesthesia-vibe-headless: FAIL no-gl sv_get_preset_info did not report \"%s\"\n", kNoGlPipeline);
+        sv_destroy(ctx);
+        return EXIT_FAILURE;
+    }
+
+    const std::string milk2Path = repoRoot + "/" + kPresetRelativePath + "2";
+    const sv_status milk2Status = sv_load_preset(ctx, milk2Path.c_str(), 0.0f);
+    printf("synesthesia-vibe-headless: milk2 sv_load_preset status=%d (%s) sv_last_error=\"%s\"\n",
+        static_cast<int>(milk2Status), BdStatusName(milk2Status), sv_last_error(ctx));
+
+    if (milk2Status != SV_ERR_PARSE)
+    {
+        fprintf(stderr, "synesthesia-vibe-headless: FAIL .milk2 load did not return SV_ERR_PARSE\n");
+        sv_destroy(ctx);
+        return EXIT_FAILURE;
+    }
+
+    char validateError[256] = {};
+    const sv_status validateStatus = sv_validate_preset(milk2Path.c_str(), validateError, sizeof(validateError));
+    printf("synesthesia-vibe-headless: milk2 sv_validate_preset status=%d (%s) error=\"%s\"\n",
+        static_cast<int>(validateStatus), BdStatusName(validateStatus), validateError);
+
+    if (validateStatus != SV_ERR_PARSE)
+    {
+        fprintf(stderr, "synesthesia-vibe-headless: FAIL .milk2 validate did not return SV_ERR_PARSE\n");
+        sv_destroy(ctx);
+        return EXIT_FAILURE;
+    }
+
+    sv_preset_info afterMilk2 = {};
+    const sv_status afterStatus = sv_get_preset_info(ctx, &afterMilk2);
+    printf("synesthesia-vibe-headless: after milk2 failure sv_get_preset_info status=%d (%s) preset_version=%d fallback_reason=\"%s\"\n",
+        static_cast<int>(afterStatus), BdStatusName(afterStatus), afterMilk2.preset_version, afterMilk2.fallback_reason);
+
+    if (afterStatus != SV_OK || afterMilk2.preset_version != info.preset_version
+        || strcmp(afterMilk2.fallback_reason, info.fallback_reason) != 0)
+    {
+        fprintf(stderr, "synesthesia-vibe-headless: FAIL query after .milk2 failure did not describe the previous preset\n");
         sv_destroy(ctx);
         return EXIT_FAILURE;
     }

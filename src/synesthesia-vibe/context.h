@@ -9,6 +9,7 @@
 #define __SYNESTHESIA_VIBE_SYNESTHESIA_VIBE_CONTEXT_H__ 1
 
 #include <cstdint>
+#include <mutex>
 #include <random>
 #include <string>
 #include <vector>
@@ -55,6 +56,16 @@ constexpr float kBeatdropDisplayFpsDamping = 0.9f;
 constexpr float kBeatdropDefaultDebugIntervalSeconds = 1.0f;
 
 struct BdGlPipeline;
+
+struct BdPresetInfoSnapshot
+{
+    int presetVersion;
+    int warpPsVersion;
+    int compPsVersion;
+    int warpShader;
+    int compShader;
+    char fallbackReason[256];
+};
 
 struct sv_context
 {
@@ -103,6 +114,8 @@ struct sv_context
     int debugWindowFrame;
     unsigned int debugGlErrorBase;
     int presetVersion;
+    std::mutex presetInfoMutex;
+    BdPresetInfoSnapshot presetInfo;
     std::string presetName;
 
     int width;

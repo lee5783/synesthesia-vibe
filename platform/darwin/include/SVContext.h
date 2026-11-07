@@ -31,12 +31,22 @@ typedef struct SVAudioLevels {
     float treble;
 } SVAudioLevels;
 
-/* Every method except the PCM pushes, audioLevels, lastErrorMessage and the preparePreset methods touches GL: call it on the render thread with the GL context current. A preparePreset call may run on any thread with a stack of at least 1 MB, and invalidate waits for it. */
+typedef struct SVPresetInfo {
+    NSInteger presetVersion;
+    NSInteger warpPixelShaderVersion;
+    NSInteger compPixelShaderVersion;
+    BOOL warpShaderActive;
+    BOOL compShaderActive;
+} SVPresetInfo;
+
+/* Every method except the PCM pushes, audioLevels, presetInfo, presetFallbackReason, lastErrorMessage and the preparePreset methods touches GL: call it on the render thread with the GL context current. A preparePreset call may run on any thread with a stack of at least 1 MB, and invalidate waits for it. */
 @interface SVContext : NSObject
 
 @property (nonatomic, copy, readonly) SVContextConfiguration *configuration;
 @property (nonatomic, assign, readonly, getter=isPaused) BOOL paused;
 @property (nonatomic, assign, readonly) SVAudioLevels audioLevels;
+@property (nonatomic, assign, readonly) SVPresetInfo presetInfo;
+@property (nonatomic, copy, readonly) NSString *presetFallbackReason;
 @property (nonatomic, copy, readonly, nullable) NSString *lastErrorMessage;
 @property (nonatomic, assign) float playbackRate;
 @property (nonatomic, copy, nullable) void (^debugInfoHandler)(NSDictionary<NSString *, id> *info);

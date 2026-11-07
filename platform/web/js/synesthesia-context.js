@@ -10,6 +10,7 @@ import { SynesthesiaError } from "./synesthesia-error.js";
 const RENDERER_UNAVAILABLE_PREFIX = "renderer unavailable";
 const PINNED_DATE_FIELDS = 8;
 const AUDIO_LEVEL_FIELDS = 3;
+const PRESET_INFO_FIELDS = 5;
 const FLOAT_BYTES = 4;
 const INT_BYTES = 4;
 const DOUBLE_BYTES = 8;
@@ -22,6 +23,7 @@ export class SynesthesiaContext {
     #scratch = 0;
     #scratchBytes = 0;
     #levels = 0;
+    #presetInfo = 0;
     #onDebugInfo = null;
     #debugReport = 0;
     #debugSequence = 0;
@@ -274,6 +276,25 @@ export class SynesthesiaContext {
         return { bass: heap[index], mid: heap[index + 1], treble: heap[index + 2] };
     }
 
+    presetInfo() {
+        const handle = this.#requireHandle();
+
+        if (this.#presetInfo === 0)
+            this.#presetInfo = this.#module._malloc(PRESET_INFO_FIELDS * INT_BYTES);
+
+        this.#check(this.#module._sv_web_get_preset_info(handle, this.#presetInfo));
+        const index = this.#presetInfo / INT_BYTES;
+        const heap = this.#module.HEAP32;
+        return {
+            preset_version: heap[index],
+            warp_ps_version: heap[index + 1],
+            comp_ps_version: heap[index + 2],
+            warp_shader: heap[index + 3],
+            comp_shader: heap[index + 4],
+            fallback_reason: this.#module.UTF8ToString(this.#module._sv_web_preset_fallback_reason())
+        };
+    }
+
     lastError() {
         return this.#module.UTF8ToString(this.#module._sv_web_last_error(this.#requireHandle()));
     }
@@ -307,9 +328,13 @@ export class SynesthesiaContext {
         if (this.#levels !== 0)
             this.#module._free(this.#levels);
 
+        if (this.#presetInfo !== 0)
+            this.#module._free(this.#presetInfo);
+
         this.#scratch = 0;
         this.#scratchBytes = 0;
         this.#levels = 0;
+        this.#presetInfo = 0;
     }
 
     closeAfterContextLoss() {
@@ -377,8 +402,11 @@ export class SynesthesiaContext {
             feedback_format: ints[word(80)],
             gl_errors: ints[word(84)],
             limiter_active: ints[word(88)],
+            warp_ps_version: ints[word(92)],
+            comp_ps_version: ints[word(96)],
             preset_name: module.UTF8ToString(module._sv_web_debug_preset_name()),
-            last_error: module.UTF8ToString(module._sv_web_debug_last_error())
+            last_error: module.UTF8ToString(module._sv_web_debug_last_error()),
+            fallback_reason: module.UTF8ToString(module._sv_web_debug_fallback_reason())
         });
     }
 
