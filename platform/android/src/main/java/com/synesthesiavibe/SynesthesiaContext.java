@@ -33,10 +33,13 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static final int DEBUG_VALUE_COUNT = 23;
     private static final int DEBUG_STRING_COUNT = 3;
     private static final int PRESET_INFO_VALUE_COUNT = 5;
+    private static final int PRESET_REQUEST_VALUE_COUNT = 2;
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private volatile DebugListener debugListener;
     private long debugSeenSequence;
+    private volatile PresetRequestListener presetRequestListener;
+    private long requestSeenSequence;
     private long handle;
 
     private SynesthesiaContext(long handle) {
@@ -227,6 +230,7 @@ public final class SynesthesiaContext implements AutoCloseable {
     public void render(double deltaSeconds, int targetFramebuffer) {
         double[] debugValues = null;
         byte[][] debugStrings = null;
+        PresetRequest request = null;
 
         lock.readLock().lock();
         try {
@@ -242,6 +246,16 @@ public final class SynesthesiaContext implements AutoCloseable {
                     debugSeenSequence = nativeReadDebugInfo(current, debugValues, debugStrings);
                 }
             }
+
+            if (presetRequestListener != null) {
+                long sequence = nativePresetRequestSequence(current);
+
+                if (sequence != requestSeenSequence) {
+                    float[] requestValues = new float[PRESET_REQUEST_VALUE_COUNT];
+                    requestSeenSequence = nativeReadPresetRequest(current, requestValues);
+                    request = new PresetRequest((int) requestValues[0], requestValues[1]);
+                }
+            }
         } finally {
             lock.readLock().unlock();
         }
@@ -250,6 +264,11 @@ public final class SynesthesiaContext implements AutoCloseable {
 
         if (debugValues != null && listener != null)
             listener.onDebugInfo(debugInfo(debugValues, debugStrings));
+
+        PresetRequestListener requestListener = presetRequestListener;
+
+        if (request != null && requestListener != null)
+            requestListener.onPresetRequest(request);
     }
 
     public void resize(int widthPixels, int heightPixels) {
@@ -283,6 +302,36 @@ public final class SynesthesiaContext implements AutoCloseable {
         lock.readLock().lock();
         try {
             nativeSetPlaybackRate(requireHandle(), rate);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setTransitionConfiguration(TransitionConfiguration configuration) {
+        TransitionConfiguration applied = configuration != null ? configuration : TransitionConfiguration.builder().build();
+        lock.readLock().lock();
+        try {
+            nativeSetTransitionConfig(requireHandle(), applied.getSoftCutSeconds(), applied.getPresetDuration(), applied.getPresetDurationRand(), applied.isHardCutsEnabled(), applied.getHardCutLoudness(), applied.getHardCutHalflife());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setBlendPattern(int pattern) {
+        lock.readLock().lock();
+        try {
+            nativeSetBlendPattern(requireHandle(), pattern);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void setPresetRequestListener(PresetRequestListener listener) {
+        lock.readLock().lock();
+        try {
+            long current = requireHandle();
+            presetRequestListener = listener;
+            requestSeenSequence = nativeSetPresetRequestEnabled(current, listener != null);
         } finally {
             lock.readLock().unlock();
         }
@@ -486,6 +535,10 @@ public final class SynesthesiaContext implements AutoCloseable {
         void onDebugInfo(Map<String, Object> info);
     }
 
+    public interface PresetRequestListener {
+        void onPresetRequest(PresetRequest request);
+    }
+
     public static final class AudioLevels {
 
         public final float bass;
@@ -539,6 +592,16 @@ public final class SynesthesiaContext implements AutoCloseable {
     private static native void nativeResume(long handle);
 
     private static native void nativeSetPlaybackRate(long handle, float rate);
+
+    private static native void nativeSetTransitionConfig(long handle, float softCutSeconds, float presetDuration, float presetDurationRand, boolean hardCutsEnabled, float hardCutLoudness, float hardCutHalflife);
+
+    private static native void nativeSetBlendPattern(long handle, int pattern);
+
+    private static native long nativeSetPresetRequestEnabled(long handle, boolean enabled);
+
+    private static native long nativePresetRequestSequence(long handle);
+
+    private static native long nativeReadPresetRequest(long handle, float[] valuesOut);
 
     private static native long nativeSetDebugEnabled(long handle, boolean enabled);
 

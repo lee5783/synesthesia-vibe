@@ -207,6 +207,7 @@ set(BEATDROP_RENDER_CORE_SOURCES
   ${BEATDROP_SRC_DIR}/render/core/time_model.cpp
   ${BEATDROP_SRC_DIR}/render/core/frame_driver.cpp
   ${BEATDROP_SRC_DIR}/render/core/mesh.cpp
+  ${BEATDROP_SRC_DIR}/render/core/blend_pattern.cpp
   ${BEATDROP_SRC_DIR}/render/core/noise.cpp
   ${BEATDROP_SRC_DIR}/render/core/shader_constants.cpp
   ${BEATDROP_SRC_DIR}/render/core/sampler_resolver.cpp

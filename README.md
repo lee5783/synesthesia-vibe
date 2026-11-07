@@ -84,6 +84,22 @@ in the tables below.
   report, the limiter and the last error. It is delivered from `sv_render_frame` on wall-clock time, so a
   paused view whose loop stops also stops reporting. The struct and its strings are valid only during the
   callback. Deterministic captures are unaffected.
+- **Preset blending:** `sv_load_preset*` and `sv_commit_preset` with a positive `blend_seconds` cross-fade from the
+  old preset to the new one on both render paths (shader and fixed-function), with per-vertex timing so the new
+  preset appears in a shape. `sv_set_blend_pattern(ctx, pattern)` picks that shape: `SV_BLEND_PATTERN_RANDOM`
+  (default, a new random pattern per blend) or one of the 19 patterns `0` to `SV_BLEND_PATTERN_COUNT - 1`
+  (Fade, Directional Wipe, Plasma, Radial, Clock, Spiral/Snail, Rhombus/Diamond, Nuclear Clock, Square/Diamond,
+  Checkerboard Wipe, Curtain, Bubble, Kaleidoscope, Moebius Strip, Star, Disco Floor, Fire/Flame, Whirlpool Drain,
+  Julia Fractal), the same set as BeatDrop. A blend of 0 is a hard cut and is unchanged from before.
+- **Automatic preset changes:** `sv_set_transition_config(ctx, config)` sets the blend a timer request suggests
+  (2.7 s), the seconds between changes (16 s, plus up to 10 s drawn per preset; `<= 0` turns the timer off) and
+  the hard cuts (off by default, with a loudness threshold of 2.5 and a half-life of 60 s); `NULL` restores the
+  defaults. `sv_set_preset_request_callback(ctx, fn, user)` receives a `sv_preset_request` (reason timer or hard
+  cut, and the suggested blend: 0 for a hard cut) from `sv_render_frame`, once per call and after the frame is
+  presented. The engine never picks a preset: the callback loads one with `sv_load_preset*` or
+  `sv_commit_preset`. The request stays latched, and no further one fires, until a load succeeds; a failed load
+  restarts the timer at the next `sv_render_frame`. Timers and blends run on simulation time, so a host that renders
+  below 15 frames per second sees them slow down. A context with no callback behaves as before.
 
 | Setting | Apple (Objective-C / Swift) | Android (Java) | Web (JavaScript) |
 |---|---|---|---|
@@ -91,6 +107,7 @@ in the tables below.
 | Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
 | Debug info | `SVContext` / `SVView` `debugInfoHandler`, `debugInterval`, `debugEnabled` (Swift `SynesthesiaPlayer.debugInfo`) | `SynesthesiaContext.setDebugListener`, `setDebugInterval`; `SynesthesiaRenderer.setDebugListener`, `setDebugInterval` | `SynesthesiaContext.onDebugInfo`, `setDebugInterval`; `SynesthesiaCanvas.onDebugInfo`, `setDebugInterval` |
+| Transitions | `SVContext` / `SVView` `transitionConfiguration` (`SVTransitionConfiguration`), `blendPattern` (`SVBlendPattern`, `SVBlendPatternName`), `presetRequestHandler` (`SVPresetRequest`, called on the render thread after the frame); Swift `SynesthesiaPlayer.transitionConfiguration`, `blendPattern`, `presetRequestHandler` | `SynesthesiaContext` / `SynesthesiaRenderer` `setTransitionConfiguration(TransitionConfiguration)` (`null` = defaults), `setBlendPattern(int)` (`BlendPattern`), `setPresetRequestListener(PresetRequestListener)` (called on the GL thread) | `SynesthesiaContext` / `SynesthesiaCanvas` `setTransitionConfig({...})`, `setBlendPattern(n)` (`BLEND_PATTERN_NAMES`), `onPresetRequest(handler)`; re-applied after context restore |
 | Validation | `+[SVContext validatePresetAtURL:error:]`, `+validatePresetText:error:` (Swift `validatePreset(at:)`, `validatePreset(text:)`) | `SynesthesiaContext.validatePreset(File)`, `validatePresetText(String[, File])` | `SynesthesiaContext.validatePreset(module, path)`, `validatePresetText(module, text)` |
 | Prepare / commit | `-[SVContext preparePresetAtURL:error:]`, `-preparePresetText:error:` → `SVPreparedPreset`, then `-commitPreparedPreset:blendSeconds:error:` (Swift `preparePreset(at:)`, `preparePreset(text:)`, `commitPreset(_:blendSeconds:)`; `SynesthesiaPlayer.loadPreset(at:)` prepares off the main thread) | `SynesthesiaContext.preparePreset(File)`, `preparePresetText(String)` → `PreparedPreset` (close it), then `commitPreset(PreparedPreset, float)` on the GL thread | `SynesthesiaContext.preparePreset(path)`, `preparePresetText(text)` → `PreparedPreset` (call `free()`), then `commitPreset(prepared, blendSeconds)`; `SynesthesiaCanvas.loadPreset` / `loadPresetText` are async |
 
@@ -139,7 +156,7 @@ this repository's Releases page. Every file name carries the version `<v>`:
 | `synesthesia-vibe-web-<v>.zip` | Web library dist: `synesthesia-vibe-wasm.{js,wasm}`, the ES-module JavaScript API and a `VERSION` stamp |
 | `SHA256SUMS.txt` | sha256 of every other asset |
 
-- **Sample controls.** The samples share one design: a preset playlist, a source picker (WAV, microphone, system sound where supported), a frame-rate set of 30 / 60 / 120 / Uncapped (default 60) and a debug overlay (shift-cmd-D on macOS). They have no speed, render-scale, snapshot or WAV-export controls.
+- **Sample controls.** The samples share one design: a preset playlist, a source picker (WAV, microphone, system sound where supported), a frame-rate set of 30 / 60 / 120 / Uncapped (default 60), an Auto-change toggle with an interval (the engine's timer asks for the next preset), a blend duration (0 to 10 s, default 2 s), a Transition picker (Random and the 19 patterns), a Hard cuts toggle and a debug overlay (shift-cmd-D on macOS). They have no speed, render-scale, snapshot or WAV-export controls.
 - **The iOS samples run in the Simulator only.** They are not signed for a device. Install one with
   `xcrun simctl install booted <App>.app`.
 - **Gatekeeper blocks the first launch of a macOS sample**, because a downloaded app is quarantined and the
@@ -269,7 +286,7 @@ EMSDK=$HOME/emsdk .github/scripts/build-web-sample.sh --skip-library --serve 800
 The first form builds the library, then assembles `build/samples/web/` from [`samples/web/`](samples/web),
 the dist folder and the presets, textures and test WAV under `resources/`. `--serve` hosts it on
 `127.0.0.1`. The sample page has a Start button, a source selector (WAV, microphone, audio file, and tab
-audio on Chromium), preset switching with blending and bass/mid/treble meters.
+audio on Chromium), preset switching with blending (a Transition picker, a blend duration of 0 to 10 s, Auto-change and Hard cuts toggles) and bass/mid/treble meters.
 
 ### Desktop library and unit tests (macOS)
 

@@ -15,6 +15,7 @@ final class VisualizerViewController: UIViewController {
     private enum Section: Int, CaseIterable {
         case presets
         case autoChange
+        case transitions
         case soundSource
         case playback
         case developer
@@ -22,7 +23,12 @@ final class VisualizerViewController: UIViewController {
 
     private enum PlaybackRow: Int, CaseIterable {
         case frameRate
-        case transition
+    }
+
+    private enum TransitionRow: Int, CaseIterable {
+        case pattern
+        case blendDuration
+        case hardCuts
     }
 
     private let session: VisualizerSession
@@ -30,6 +36,7 @@ final class VisualizerViewController: UIViewController {
     private let nowPlayingBar = NowPlayingBar()
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
     private let autoSwitch = UISwitch()
+    private let hardCutSwitch = UISwitch()
     private let debugSwitch = UISwitch()
     private let frameRateControl = UISegmentedControl(items: VisualizerSession.frameRates.map { $0 > 0 ? String(Int($0)) : "Max" })
     private var cancellables: Set<AnyCancellable> = []
@@ -105,6 +112,10 @@ final class VisualizerViewController: UIViewController {
         autoSwitch.addTarget(self, action: #selector(toggleAutoChange), for: .valueChanged)
         autoSwitch.accessibilityLabel = "Auto-change presets"
 
+        hardCutSwitch.onTintColor = DesignTokens.accentPrimary
+        hardCutSwitch.addTarget(self, action: #selector(toggleHardCuts), for: .valueChanged)
+        hardCutSwitch.accessibilityLabel = "Hard cuts"
+
         debugSwitch.onTintColor = DesignTokens.accentPrimary
         debugSwitch.addTarget(self, action: #selector(toggleDebug), for: .valueChanged)
         debugSwitch.accessibilityLabel = "Debug overlay"
@@ -130,7 +141,8 @@ final class VisualizerViewController: UIViewController {
                         cap: self.session.capLabel,
                         gl: self.session.glVersion,
                         audio: self.session.audioLabel,
-                        auto: self.session.autoText
+                        auto: self.session.autoText,
+                        transition: self.session.transitionLabel
                     )
                     return
                 }
@@ -140,6 +152,7 @@ final class VisualizerViewController: UIViewController {
                     gl: self.session.glVersion,
                     audio: self.session.audioLabel,
                     auto: self.session.autoText,
+                    transition: self.session.transitionLabel,
                     renderScale: self.stageView.visualizerView.renderScale
                 )
             }
@@ -184,6 +197,7 @@ final class VisualizerViewController: UIViewController {
         stageView.debugButton.isOn = session.debugEnabled
         stageView.debugCard.isHidden = !session.debugEnabled
         autoSwitch.isOn = session.autoChangeEnabled
+        hardCutSwitch.isOn = session.hardCutsEnabled
         debugSwitch.isOn = session.debugEnabled
         frameRateControl.selectedSegmentIndex = VisualizerSession.frameRates.firstIndex(of: session.fpsSetting) ?? 1
         tableView.reloadData()
@@ -197,6 +211,7 @@ final class VisualizerViewController: UIViewController {
     @objc private func nextPreset() { session.advance(by: 1) }
     @objc private func togglePause() { session.togglePause() }
     @objc private func toggleAutoChange() { session.autoChangeEnabled = autoSwitch.isOn }
+    @objc private func toggleHardCuts() { session.hardCutsEnabled = hardCutSwitch.isOn }
     @objc private func toggleDebug() { session.debugEnabled.toggle(); refresh() }
 
     @objc private func changeFrameRate() {
@@ -229,7 +244,22 @@ final class VisualizerViewController: UIViewController {
     }
 
     private func pushTransitionList() {
-        let controller = SelectionViewController(title: "Transition", options: [VisualizerSession.transitionName], selectedIndex: 0) { _ in }
+        let options = VisualizerSession.blendPatternChoices.map { SVBlendPattern.name(for: $0) }
+        let index = VisualizerSession.blendPatternChoices.firstIndex(of: session.blendPattern) ?? 0
+        let controller = SelectionViewController(title: "Transition", options: options, selectedIndex: index) { [weak self] row in
+            guard let self, VisualizerSession.blendPatternChoices.indices.contains(row) else { return }
+            self.session.setBlendPattern(VisualizerSession.blendPatternChoices[row])
+        }
+        navigationController?.pushViewController(controller, animated: true)
+    }
+
+    private func pushBlendDurationList() {
+        let options = VisualizerSession.blendDurations.map(VisualizerSession.blendDurationLabel)
+        let index = VisualizerSession.blendDurations.firstIndex(of: session.blendDuration) ?? 0
+        let controller = SelectionViewController(title: "Blend duration", options: options, selectedIndex: index) { [weak self] row in
+            guard let self, VisualizerSession.blendDurations.indices.contains(row) else { return }
+            self.session.setBlendDuration(VisualizerSession.blendDurations[row])
+        }
         navigationController?.pushViewController(controller, animated: true)
     }
 }
@@ -242,7 +272,9 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section) {
-        case .presets, .autoChange, .developer: return 1
+        case .presets, .developer: return 1
+        case .autoChange: return 2
+        case .transitions: return TransitionRow.allCases.count
         case .soundSource: return VisualizerSession.AudioSource.allCases.count
         case .playback: return PlaybackRow.allCases.count
         case nil: return 0
@@ -253,6 +285,7 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
         switch Section(rawValue: section) {
         case .presets: return "Presets"
         case .autoChange: return "Auto-change"
+        case .transitions: return "Transitions"
         case .soundSource: return "Sound source"
         case .playback: return "Playback"
         case .developer: return "Developer"
@@ -263,7 +296,8 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch Section(rawValue: section) {
         case .presets: return "Pick a preset or change the presets folder."
-        case .autoChange: return "Moves to the next preset in the playlist."
+        case .autoChange: return "The engine moves to the next preset in the playlist when the interval ends."
+        case .transitions: return "Pattern and duration of the blend between presets. A hard cut loads the next preset with no blend."
         case .soundSource: return "iOS doesn’t let apps capture other apps’ audio."
         case .playback: return "Frame rate caps rendering; animation speed stays the same."
         case .developer: return "Shows FPS, frame time, audio levels and preset info over the visualization, in full screen too."
@@ -321,16 +355,24 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
                     container.widthAnchor.constraint(equalToConstant: 260)
                 ])
                 cell.accessoryView = container
-            case .transition:
+            case nil:
+                break
+            }
+
+        case .transitions:
+            switch TransitionRow(rawValue: indexPath.row) {
+            case .pattern:
                 cell.textLabel?.text = "Transition"
-                cell.detailTextLabel?.text = nil
+                cell.detailTextLabel?.text = session.transitionLabel
                 cell.accessoryType = .disclosureIndicator
-                let value = UILabel()
-                value.text = VisualizerSession.transitionName
-                value.textColor = DesignTokens.accentText
-                value.font = .systemFont(ofSize: 17)
-                value.sizeToFit()
-                cell.accessoryView = value
+            case .blendDuration:
+                cell.textLabel?.text = "Blend duration"
+                cell.detailTextLabel?.text = session.blendDurationLabel
+                cell.accessoryType = .disclosureIndicator
+            case .hardCuts:
+                cell.textLabel?.text = "Hard cuts"
+                cell.accessoryView = hardCutSwitch
+                cell.selectionStyle = .none
             case nil:
                 break
             }
@@ -355,8 +397,10 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
             pushIntervalList()
         case .soundSource:
             session.select(source: VisualizerSession.AudioSource.allCases[indexPath.row])
-        case .playback where indexPath.row == PlaybackRow.transition.rawValue:
+        case .transitions where indexPath.row == TransitionRow.pattern.rawValue:
             pushTransitionList()
+        case .transitions where indexPath.row == TransitionRow.blendDuration.rawValue:
+            pushBlendDurationList()
         default:
             break
         }

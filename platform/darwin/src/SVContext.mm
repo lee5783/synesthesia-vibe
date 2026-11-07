@@ -164,6 +164,8 @@ float SVNormalizedPlaybackRate(float rate)
 
 - (void)storeDebugInfo:(const sv_debug_info *)info;
 - (void)applyDebugCallback;
+- (void)storePresetRequest:(const sv_preset_request *)request;
+- (void)applyPresetRequestCallback;
 
 @end
 
@@ -172,6 +174,11 @@ namespace
     void SVDebugInfoTrampoline(const sv_debug_info* info, void* user)
     {
         [(__bridge SVContext*)user storeDebugInfo:info];
+    }
+
+    void SVPresetRequestTrampoline(sv_context*, const sv_preset_request* request, void* user)
+    {
+        [(__bridge SVContext*)user storePresetRequest:request];
     }
 }
 
@@ -184,6 +191,10 @@ namespace
     BOOL _debugEnabled;
     void (^_debugInfoHandler)(NSDictionary<NSString*, id>*);
     NSDictionary<NSString*, id>* _pendingDebugInfo;
+    SVTransitionConfiguration* _transitionConfiguration;
+    NSInteger _blendPattern;
+    void (^_presetRequestHandler)(SVPresetRequest*);
+    SVPresetRequest* _pendingPresetRequest;
 #if DEBUG
     NSThread* _renderThread;
 #endif
@@ -200,6 +211,8 @@ namespace
     _configuration = [configuration copy];
     _playbackRate = kDefaultPlaybackRate;
     _debugInterval = kDefaultDebugInterval;
+    _transitionConfiguration = [[SVTransitionConfiguration alloc] init];
+    _blendPattern = SVBlendPatternRandom;
 #if DEBUG
     _renderThread = [NSThread currentThread];
 #endif
@@ -417,14 +430,29 @@ namespace
 
     sv_render_frame(_context, deltaTime, targetFramebuffer);
 
-    if (_pendingDebugInfo == nil)
-        return;
+    if (_pendingDebugInfo != nil)
+    {
+        NSDictionary<NSString*, id>* info = _pendingDebugInfo;
+        _pendingDebugInfo = nil;
 
-    NSDictionary<NSString*, id>* info = _pendingDebugInfo;
-    _pendingDebugInfo = nil;
+        if (_debugInfoHandler != nil)
+            _debugInfoHandler(info);
+    }
 
-    if (_debugInfoHandler != nil)
-        _debugInfoHandler(info);
+    if (_pendingPresetRequest != nil)
+    {
+        SVPresetRequest* request = _pendingPresetRequest;
+        _pendingPresetRequest = nil;
+
+        if (_presetRequestHandler != nil)
+            _presetRequestHandler(request);
+    }
+}
+
+- (void)storePresetRequest:(const sv_preset_request *)request
+{
+    _pendingPresetRequest = [[SVPresetRequest alloc] initWithReason:static_cast<SVPresetRequestReason>(request->reason)
+                                              suggestedBlendSeconds:request->suggested_blend_seconds];
 }
 
 - (void)storeDebugInfo:(const sv_debug_info *)info
@@ -515,6 +543,61 @@ namespace
 
     if (_context != nullptr)
         sv_set_debug_callback(_context, active ? SVDebugInfoTrampoline : nullptr, (__bridge void *)self);
+}
+
+- (SVTransitionConfiguration *)transitionConfiguration
+{
+    return _transitionConfiguration;
+}
+
+- (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
+{
+    _transitionConfiguration = [transitionConfiguration copy] ?: [[SVTransitionConfiguration alloc] init];
+
+    if (_context == nullptr)
+        return;
+
+    sv_transition_config config;
+    config.soft_cut_seconds = _transitionConfiguration.softCutSeconds;
+    config.preset_duration = _transitionConfiguration.presetDuration;
+    config.preset_duration_rand = _transitionConfiguration.presetDurationRandom;
+    config.hard_cuts_enabled = _transitionConfiguration.hardCutsEnabled;
+    config.hard_cut_loudness = _transitionConfiguration.hardCutLoudness;
+    config.hard_cut_halflife = _transitionConfiguration.hardCutHalfLife;
+    sv_set_transition_config(_context, &config);
+}
+
+- (NSInteger)blendPattern
+{
+    return _blendPattern;
+}
+
+- (void)setBlendPattern:(NSInteger)blendPattern
+{
+    _blendPattern = (blendPattern >= 0 && blendPattern < SVBlendPatternCount) ? blendPattern : SVBlendPatternRandom;
+
+    if (_context != nullptr)
+        sv_set_blend_pattern(_context, static_cast<int>(_blendPattern));
+}
+
+- (void (^)(SVPresetRequest *))presetRequestHandler
+{
+    return _presetRequestHandler;
+}
+
+- (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
+{
+    _presetRequestHandler = [presetRequestHandler copy];
+    [self applyPresetRequestCallback];
+}
+
+- (void)applyPresetRequestCallback
+{
+    if (_presetRequestHandler == nil)
+        _pendingPresetRequest = nil;
+
+    if (_context != nullptr)
+        sv_set_preset_request_callback(_context, _presetRequestHandler != nil ? SVPresetRequestTrampoline : nullptr, (__bridge void *)self);
 }
 
 - (SVAudioLevels)audioLevels

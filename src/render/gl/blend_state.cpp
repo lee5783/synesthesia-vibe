@@ -62,6 +62,30 @@ void SetBlendAlphaFlipped()
     SetBlendState(true, BlendFactor::InvSrcAlpha, BlendFactor::SrcAlpha);
 }
 
+void SetBlendAlphaOverOpaque()
+{
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+}
+
+void SetBlendAlphaFlippedOverOpaque()
+{
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ZERO, GL_ONE);
+}
+
+void SetBlendPass(bool alphaBlend, bool flipAlpha)
+{
+    if (!alphaBlend)
+        SetBlendOpaque();
+    else if (flipAlpha)
+        SetBlendAlphaFlipped();
+    else
+        SetBlendAlpha();
+}
+
 void SetDefaultDrawState()
 {
     glDisable(GL_DEPTH_TEST);

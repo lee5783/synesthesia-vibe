@@ -2,6 +2,7 @@ enable_language(OBJCXX)
 
 add_library(synesthesia-vibe-darwin OBJECT
   src/SVContextConfiguration.mm
+  src/SVTransitionConfiguration.mm
   src/SVContext.mm
   src/SVPreparedPreset.mm
   src/SVAudioInput.mm

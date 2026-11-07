@@ -19,6 +19,7 @@
 #include "custom_shapes.h"
 #include "custom_waves.h"
 #include "gl_error.h"
+#include "math_macros.h"
 #include "motion_vectors.h"
 #include "screen_borders.h"
 #include "show_to_user.h"
@@ -117,6 +118,46 @@ namespace
         return frame;
     }
 
+    void BdGlWarpShaderPass(sv_context* ctx, BdGlPipeline* gl, bool oldPreset, bool alphaBlend)
+    {
+        const FrameContext frameContext = BdMakeShaderFrameContext(ctx);
+
+        render_gl::WarpShaderBlitInput shaderBlit;
+        shaderBlit.verts = ctx->meshVerts.data();
+        shaderBlit.vertexCount = static_cast<int>(ctx->meshVerts.size());
+        shaderBlit.gridX = ctx->nGridX;
+        shaderBlit.gridY = ctx->nGridY;
+        shaderBlit.indexCount = gl->warpIndexCount;
+        shaderBlit.alphaBlend = alphaBlend;
+        shaderBlit.flipAlpha = false;
+        shaderBlit.frame = BdMakePresetFrameInput(ctx, gl, &frameContext);
+
+        if (oldPreset)
+            shaderBlit.frame.state = ctx->oldState;
+
+        render_gl::WarpedBlitShaders(shaderBlit, oldPreset ? *gl->oldWarpInputs : *gl->warpInputs, gl->warpMesh,
+            gl->warpVerts, gl->targets.Source(), gl->targets.Dest());
+    }
+
+    void BdGlWarpFixedPass(sv_context* ctx, BdGlPipeline* gl, bool alphaBlend)
+    {
+        render_gl::WarpBlitInput blit;
+        blit.verts = ctx->meshVerts.data();
+        blit.vertexCount = static_cast<int>(ctx->meshVerts.size());
+        blit.indexCount = gl->warpIndexCount;
+        blit.decay = static_cast<float>(*ctx->state->var_pf_decay);
+        blit.wrap = *ctx->state->var_pf_wrap > ctx->snapPoint;
+        blit.texSizeX = ctx->texsizeX;
+        blit.texSizeY = ctx->texsizeY;
+        blit.alphaBlend = alphaBlend;
+        blit.flipAlpha = false;
+
+        BdGlSetPixelCenterOffset(ctx, gl, true);
+        render_gl::WarpedBlitNoShaders(blit, gl->texturedProgram, gl->warpMesh, gl->warpVerts,
+            gl->targets.Source(), gl->targets.Dest());
+        BdGlSetPixelCenterOffset(ctx, gl, false);
+    }
+
     void BdGlStageWarp(sv_context* ctx, BdGlPipeline* gl)
     {
         render_core::GridAlphaInput input;
@@ -135,36 +176,38 @@ namespace
 
         render_core::ComputeGridAlphaValues(input, ctx->meshVerts.data(), ctx->meshVertInfo.data());
 
-        render_gl::WarpBlitInput blit;
-        blit.verts = ctx->meshVerts.data();
-        blit.vertexCount = static_cast<int>(ctx->meshVerts.size());
-        blit.indexCount = gl->warpIndexCount;
-        blit.decay = static_cast<float>(*ctx->state->var_pf_decay);
-        blit.wrap = *ctx->state->var_pf_wrap > ctx->snapPoint;
-        blit.texSizeX = ctx->texsizeX;
-        blit.texSizeY = ctx->texsizeY;
+        const bool bNewPresetUsesWarpShader = gl->warpShaderActive;
 
-        if (gl->warpShaderActive)
+        if (!ctx->state->m_bBlending)
         {
-            const FrameContext frameContext = BdMakeShaderFrameContext(ctx);
-
-            render_gl::WarpShaderBlitInput shaderBlit;
-            shaderBlit.verts = ctx->meshVerts.data();
-            shaderBlit.vertexCount = static_cast<int>(ctx->meshVerts.size());
-            shaderBlit.gridX = ctx->nGridX;
-            shaderBlit.gridY = ctx->nGridY;
-            shaderBlit.indexCount = gl->warpIndexCount;
-            shaderBlit.frame = BdMakePresetFrameInput(ctx, gl, &frameContext);
-
-            render_gl::WarpedBlitShaders(shaderBlit, gl->warpInputs, gl->warpMesh, gl->warpVerts,
-                gl->targets.Source(), gl->targets.Dest());
+            if (bNewPresetUsesWarpShader)
+                BdGlWarpShaderPass(ctx, gl, false, false);
+            else
+                BdGlWarpFixedPass(ctx, gl, false);
             return;
         }
 
-        BdGlSetPixelCenterOffset(ctx, gl, true);
-        render_gl::WarpedBlitNoShaders(blit, gl->texturedProgram, gl->warpMesh, gl->warpVerts,
-            gl->targets.Source(), gl->targets.Dest());
-        BdGlSetPixelCenterOffset(ctx, gl, false);
+        const bool bOldPresetUsesWarpShader = gl->oldWarpShaderActive;
+
+        if (bOldPresetUsesWarpShader && bNewPresetUsesWarpShader)
+        {
+            BdGlWarpShaderPass(ctx, gl, true, false);
+            BdGlWarpShaderPass(ctx, gl, false, true);
+        }
+        else if (!bOldPresetUsesWarpShader && bNewPresetUsesWarpShader)
+        {
+            BdGlWarpFixedPass(ctx, gl, false);
+            BdGlWarpShaderPass(ctx, gl, false, true);
+        }
+        else if (bOldPresetUsesWarpShader && !bNewPresetUsesWarpShader)
+        {
+            BdGlWarpShaderPass(ctx, gl, true, false);
+            BdGlWarpFixedPass(ctx, gl, true);
+        }
+        else
+        {
+            BdGlWarpFixedPass(ctx, gl, false);
+        }
     }
 
     void BdGlDumpBlurLevels(sv_context* ctx, BdGlPipeline* gl)
@@ -277,6 +320,41 @@ namespace
         BdGlSetPixelCenterOffset(ctx, gl, false);
     }
 
+    void BdGlCompShaderPass(sv_context* ctx, BdGlPipeline* gl, render_gl::Texture& compSource, float time, bool oldPreset,
+        bool alphaBlend, bool flipAlpha)
+    {
+        const FrameContext frameContext = BdMakeShaderFrameContext(ctx);
+
+        render_gl::ShowToUserShaderInput shaderShow;
+        shaderShow.width = ctx->width;
+        shaderShow.height = ctx->height;
+        shaderShow.time = time;
+
+        for (int i = 0; i < 4; i++)
+            shaderShow.randStart[i] = kBeatdropRandStart[i];
+
+        shaderShow.blendVerts = ctx->meshVerts.data();
+        shaderShow.blendGridX = ctx->nGridX;
+        shaderShow.blendGridY = ctx->nGridY;
+        shaderShow.alphaBlend = alphaBlend;
+        shaderShow.flipAlpha = flipAlpha;
+        shaderShow.frame = BdMakePresetFrameInput(ctx, gl, &frameContext);
+
+        if (oldPreset)
+            shaderShow.frame.state = ctx->oldState;
+
+        render_gl::ShowToUserShaders(shaderShow, oldPreset ? *gl->oldCompInputs : *gl->compInputs, gl->compGrid,
+            gl->compMesh, compSource);
+    }
+
+    void BdGlCompFixedPass(sv_context* ctx, BdGlPipeline* gl, const render_gl::ShowToUserInput& show,
+        render_gl::Texture& noShaderSource)
+    {
+        BdGlSetPixelCenterOffset(gl, true, ctx->width, ctx->height);
+        render_gl::ShowToUserNoShaders(show, gl->texturedProgram, gl->untexturedProgram, gl->quadMesh, noShaderSource);
+        BdGlSetPixelCenterOffset(gl, false, ctx->width, ctx->height);
+    }
+
     void BdGlStageComposite(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
         render_gl::Texture& noShaderSource)
     {
@@ -303,29 +381,56 @@ namespace
         show.solarize = *ctx->state->var_pf_solarize != 0.0;
         show.invert = *ctx->state->var_pf_invert != 0.0;
 
+        if (ctx->state->m_bBlending &&
+            ctx->state->m_fVideoEchoAlpha.eval(time) > 0.01f &&
+            ctx->state->m_fVideoEchoAlphaOld > 0.01f &&
+            ctx->state->m_nVideoEchoOrientation != ctx->state->m_nVideoEchoOrientationOld)
+        {
+            if (ctx->state->m_fBlendProgress < ctx->snapPoint)
+            {
+                show.echoOrient = ctx->state->m_nVideoEchoOrientationOld;
+                show.echoAlpha *= 1.0f - 2.0f * CosineInterp(ctx->state->m_fBlendProgress);
+            }
+            else
+            {
+                show.echoAlpha *= 2.0f * CosineInterp(ctx->state->m_fBlendProgress) - 1.0f;
+            }
+        }
+
         render_gl::BindExternalTarget(targetFbo, ctx->width, ctx->height);
 
-        if (gl->compShaderActive)
+        const bool bNewPresetUsesCompShader = gl->compShaderActive;
+
+        if (!ctx->state->m_bBlending)
         {
-            const FrameContext frameContext = BdMakeShaderFrameContext(ctx);
-
-            render_gl::ShowToUserShaderInput shaderShow;
-            shaderShow.width = ctx->width;
-            shaderShow.height = ctx->height;
-            shaderShow.time = time;
-
-            for (int i = 0; i < 4; i++)
-                shaderShow.randStart[i] = kBeatdropRandStart[i];
-
-            shaderShow.frame = BdMakePresetFrameInput(ctx, gl, &frameContext);
-
-            render_gl::ShowToUserShaders(shaderShow, gl->compInputs, gl->compGrid, gl->compMesh, compSource);
+            if (bNewPresetUsesCompShader)
+                BdGlCompShaderPass(ctx, gl, compSource, time, false, false, false);
+            else
+                BdGlCompFixedPass(ctx, gl, show, noShaderSource);
             return;
         }
 
-        BdGlSetPixelCenterOffset(gl, true, ctx->width, ctx->height);
-        render_gl::ShowToUserNoShaders(show, gl->texturedProgram, gl->untexturedProgram, gl->quadMesh, noShaderSource);
-        BdGlSetPixelCenterOffset(gl, false, ctx->width, ctx->height);
+        const bool bOldPresetUsesCompShader = gl->oldCompShaderActive;
+
+        if (bOldPresetUsesCompShader && bNewPresetUsesCompShader)
+        {
+            BdGlCompShaderPass(ctx, gl, compSource, time, true, false, false);
+            BdGlCompShaderPass(ctx, gl, compSource, time, false, true, false);
+        }
+        else if (!bOldPresetUsesCompShader && bNewPresetUsesCompShader)
+        {
+            BdGlCompFixedPass(ctx, gl, show, noShaderSource);
+            BdGlCompShaderPass(ctx, gl, compSource, time, false, true, false);
+        }
+        else if (bOldPresetUsesCompShader && !bNewPresetUsesCompShader)
+        {
+            BdGlCompFixedPass(ctx, gl, show, noShaderSource);
+            BdGlCompShaderPass(ctx, gl, compSource, time, true, true, true);
+        }
+        else
+        {
+            BdGlCompFixedPass(ctx, gl, show, noShaderSource);
+        }
     }
 
     void BdGlCompositeToTarget(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
@@ -353,8 +458,11 @@ namespace
 
     void BdGlUploadAudio(BdGlPipeline* gl, sv_context* ctx)
     {
-        const bool bAudioSampled = (gl->warpShaderActive && gl->warpInputs.UsesAudio()) ||
-            (gl->compShaderActive && gl->compInputs.UsesAudio());
+        const bool bOldAudioSampled = ctx->state->m_bBlending &&
+            ((gl->oldWarpShaderActive && gl->oldWarpInputs->UsesAudio()) ||
+            (gl->oldCompShaderActive && gl->oldCompInputs->UsesAudio()));
+        const bool bAudioSampled = (gl->warpShaderActive && gl->warpInputs->UsesAudio()) ||
+            (gl->compShaderActive && gl->compInputs->UsesAudio()) || bOldAudioSampled;
 
         if (bAudioSampled)
             gl->audio.Upload(ctx->fftSmoothed, ctx->fftPeak, ctx->sound.fWaveform[0], ctx->sound.fWaveform[1]);

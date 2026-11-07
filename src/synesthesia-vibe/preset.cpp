@@ -440,7 +440,21 @@ namespace
         ctx->nextPresetTimeWasInitialized = false;
     }
 
-    void BdApplyPresetImport(sv_context* ctx, const std::wstring& presetPath, float blendSeconds)
+    void BdRandomizeBlendPattern(sv_context* ctx)
+    {
+        render_core::BlendPatternInput input;
+        input.pattern = ctx->blendPattern;
+        input.gridX = ctx->nGridX;
+        input.gridY = ctx->nGridY;
+        input.screenDependentRenderMode = kBeatdropScreenDependentRenderMode;
+        input.aspectX = ctx->aspectX;
+        input.aspectY = ctx->aspectY;
+        input.fps = ctx->timeModel.GetFps();
+
+        render_core::RandomizeBlendPattern(input, ctx->blendPatternClock, ctx->rng, ctx->meshVertInfo.data());
+    }
+
+    float BdApplyPresetImport(sv_context* ctx, const std::wstring& presetPath, float blendSeconds)
     {
         ctx->hostSink.Clear();
 
@@ -462,6 +476,7 @@ namespace
             ctx->defaultWarpShaderText, ctx->defaultCompShaderText, frameInputs, ctx->hostSink);
 
         BdStartPresetBlend(ctx, now, blendSeconds);
+        return blendSeconds;
     }
 
     void BdPrepareStage(render_gl::TranslatedShaderCache& translations, render_gl::PresetShaderStage stage, int version,
@@ -580,6 +595,11 @@ namespace
 
         ctx->state->ImportCommit(now, frameInputs);
         BdStartPresetBlend(ctx, now, blendSeconds);
+
+        if (blendSeconds >= 0.001f)
+            BdRandomizeBlendPattern(ctx);
+
+        BdClearPresetRequestLatch(ctx);
         ctx->resumePending = true;
 
         ctx->presetVersion = prepared.presetVersion;
@@ -590,7 +610,7 @@ namespace
     }
 }
 
-static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend_seconds, const std::string& textureDirectory,
+static sv_status BdLoadPresetFromImpl(sv_context* ctx, const char* path, float blend_seconds, const std::string& textureDirectory,
     bool reportPresetName)
 {
     if (ctx == nullptr || path == nullptr || path[0] == '\0')
@@ -629,7 +649,7 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
     const float previousNextPresetTime = ctx->nextPresetTime;
     const bool previousNextPresetTimeWasInitialized = ctx->nextPresetTimeWasInitialized;
 
-    BdApplyPresetImport(ctx, nativePath, blend_seconds);
+    const float appliedBlendSeconds = BdApplyPresetImport(ctx, nativePath, blend_seconds);
     ctx->resumePending = true;
 
     if (ctx->hostSink.ErrorCount() > 0)
@@ -637,14 +657,21 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
         CState* failed = ctx->state;
         ctx->state = ctx->oldState;
         ctx->oldState = failed;
+        ctx->state->m_bBlending = false;
 
         ctx->presetStartTime = previousPresetStartTime;
         ctx->nextPresetTime = previousNextPresetTime;
         ctx->nextPresetTimeWasInitialized = previousNextPresetTimeWasInitialized;
 
         BdSetPresetError(ctx, ctx->hostSink.LastError());
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_PARSE;
     }
+
+    if (appliedBlendSeconds >= 0.001f)
+        BdRandomizeBlendPattern(ctx);
+
+    BdClearPresetRequestLatch(ctx);
 
     ctx->presetVersion = BdReadPresetVersion(nativePath);
     if (reportPresetName)
@@ -665,6 +692,17 @@ static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend
     return SV_OK;
 }
 
+static sv_status BdLoadPresetFrom(sv_context* ctx, const char* path, float blend_seconds, const std::string& textureDirectory,
+    bool reportPresetName)
+{
+    const sv_status status = BdLoadPresetFromImpl(ctx, path, blend_seconds, textureDirectory, reportPresetName);
+
+    if (status != SV_OK && status != SV_ERR_GL)
+        BdSignalPresetLoadFailure(ctx);
+
+    return status;
+}
+
 extern "C" sv_status sv_load_preset(sv_context* ctx, const char* path, float blend_seconds)
 {
     if (path == nullptr)
@@ -679,12 +717,14 @@ extern "C" sv_status sv_load_preset_memory(sv_context* ctx, const char* text, si
     {
         if (ctx != nullptr)
             BdSetPresetError(ctx, "sv_load_preset_memory: text is null");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
     if (!BdLooksLikePresetText(text, len))
     {
         BdSetPresetError(ctx, kNotPresetMessage);
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_PARSE;
     }
 
@@ -696,6 +736,7 @@ extern "C" sv_status sv_load_preset_memory(sv_context* ctx, const char* text, si
     if (!BdWriteTempFile(tempPath, text, len))
     {
         BdSetPresetError(ctx, "sv_load_preset_memory: could not create temporary file");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_IO;
     }
 
@@ -759,6 +800,7 @@ extern "C" sv_status sv_prepare_preset(sv_context* ctx, const char* path, sv_pre
     if (ctx == nullptr || out_prepared == nullptr)
     {
         BdCopyError(error, error_len, "sv_prepare_preset: context or output is null");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
@@ -771,6 +813,8 @@ extern "C" sv_status sv_prepare_preset(sv_context* ctx, const char* path, sv_pre
 
     if (status == SV_OK)
         *out_prepared = prepared.release();
+    else
+        BdSignalPresetLoadFailure(ctx);
 
     return status;
 }
@@ -784,12 +828,14 @@ extern "C" sv_status sv_prepare_preset_memory(sv_context* ctx, const char* text,
     if (ctx == nullptr || out_prepared == nullptr || text == nullptr)
     {
         BdCopyError(error, error_len, "sv_prepare_preset_memory: context, text or output is null");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
     if (!BdLooksLikePresetText(text, len))
     {
         BdCopyError(error, error_len, kNotPresetMessage);
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_PARSE;
     }
 
@@ -804,6 +850,7 @@ extern "C" sv_status sv_prepare_preset_memory(sv_context* ctx, const char* text,
     if (!BdWriteTempFile(tempPath, text, len))
     {
         BdCopyError(error, error_len, "sv_prepare_preset_memory: could not create temporary file");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_IO;
     }
 
@@ -816,6 +863,8 @@ extern "C" sv_status sv_prepare_preset_memory(sv_context* ctx, const char* text,
 
     if (status == SV_OK)
         *out_prepared = prepared.release();
+    else
+        BdSignalPresetLoadFailure(ctx);
 
     return status;
 }
@@ -828,24 +877,28 @@ extern "C" sv_status sv_commit_preset(sv_context* ctx, sv_prepared_preset* prepa
     if (prepared == nullptr)
     {
         BdSetPresetError(ctx, "sv_commit_preset: prepared preset is null");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
     if (prepared->committed)
     {
         BdSetPresetError(ctx, "sv_commit_preset: prepared preset was already committed");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
     if (prepared->owner != ctx || prepared->ownerSerial != ctx->serial)
     {
         BdSetPresetError(ctx, "sv_commit_preset: prepared preset belongs to another context");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_ARG;
     }
 
     if (ctx->gl != nullptr && !ctx->gl->ready)
     {
         BdSetPresetError(ctx, "GL pipeline unavailable, preset not committed");
+        BdSignalPresetLoadFailure(ctx);
         return SV_ERR_GL;
     }
 

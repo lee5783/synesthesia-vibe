@@ -41,7 +41,7 @@ void WarpedBlitShaders(const WarpShaderBlitInput& input, PresetShaderInputs& sha
     std::copy(input.verts, input.verts + vertexCount, scratch.begin());
 
     dest.Bind();
-    SetBlendOpaque();
+    SetBlendPass(input.alphaBlend, input.flipAlpha);
 
     PresetFrameInput frame = input.frame;
     frame.mainTexture = source.ColorTexture().Id();
@@ -60,6 +60,9 @@ void WarpedBlitShaders(const WarpShaderBlitInput& input, PresetShaderInputs& sha
     }
 
     shaderInputs.Restore();
+
+    if (input.alphaBlend)
+        SetBlendOpaque();
 }
 
 }

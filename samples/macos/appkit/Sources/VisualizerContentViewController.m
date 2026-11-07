@@ -155,6 +155,7 @@ static const CGFloat ContentOverlayMargin = 12.0;
                           backend:(nullable NSString *)backend
                        renderScale:(CGFloat)renderScale
                               autoChangeText:(NSString *)autoChangeText
+                              transitionText:(NSString *)transitionText
                          lastError:(nullable NSString *)lastError
                             levels:(SVAudioLevels)levels
 {
@@ -167,7 +168,7 @@ static const CGFloat ContentOverlayMargin = 12.0;
                                   [info[@"width"] intValue], [info[@"height"] intValue], renderScale];
     self.debugOverlay.backendText = backend.length > 0 ? backend : @"";
     self.debugOverlay.audioText = [NSString stringWithFormat:@"%@ · %.1f kHz", source, sampleRate / 1000.0];
-    self.debugOverlay.rateText = @"1.0× · Blend";
+    self.debugOverlay.rateText = [NSString stringWithFormat:@"1.0× · %@", transitionText];
     self.debugOverlay.autoText = autoChangeText;
     self.debugOverlay.lastErrorText = lastError;
     self.debugOverlay.bass = levels.bass;

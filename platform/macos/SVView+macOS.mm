@@ -116,6 +116,9 @@ namespace
     float _debugInterval;
     BOOL _debugEnabled;
     void (^_debugInfoHandler)(NSDictionary<NSString *, id> *);
+    SVTransitionConfiguration *_transitionConfiguration;
+    NSInteger _blendPattern;
+    void (^_presetRequestHandler)(SVPresetRequest *);
     BOOL _frameRateHintApplied;
     BOOL _surfaceBackingSizeEnabled;
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
@@ -151,6 +154,8 @@ namespace
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
     _debugInterval = 1.0f;
+    _transitionConfiguration = [[SVTransitionConfiguration alloc] init];
+    _blendPattern = SVBlendPatternRandom;
 
     NSOpenGLPixelFormatAttribute attributes[] = {
         NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
@@ -274,6 +279,39 @@ namespace
     _context.debugInterval = debugInterval;
 }
 
+- (SVTransitionConfiguration *)transitionConfiguration
+{
+    return _transitionConfiguration;
+}
+
+- (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
+{
+    _transitionConfiguration = [transitionConfiguration copy] ?: [[SVTransitionConfiguration alloc] init];
+    _context.transitionConfiguration = _transitionConfiguration;
+}
+
+- (NSInteger)blendPattern
+{
+    return _blendPattern;
+}
+
+- (void)setBlendPattern:(NSInteger)blendPattern
+{
+    _blendPattern = blendPattern;
+    _context.blendPattern = blendPattern;
+}
+
+- (void (^)(SVPresetRequest *))presetRequestHandler
+{
+    return _presetRequestHandler;
+}
+
+- (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
+{
+    _presetRequestHandler = [presetRequestHandler copy];
+    _context.presetRequestHandler = _presetRequestHandler;
+}
+
 - (BOOL)debugEnabled
 {
     return _debugEnabled;
@@ -337,6 +375,9 @@ namespace
     context.debugInterval = _debugInterval;
     context.debugInfoHandler = _debugInfoHandler;
     context.debugEnabled = _debugEnabled;
+    context.transitionConfiguration = _transitionConfiguration;
+    context.blendPattern = _blendPattern;
+    context.presetRequestHandler = _presetRequestHandler;
     self.drawableSize = pixels;
     if (!_hasPreferredFramesPerSecond) {
         _preferredFramesPerSecond = SVNormalizedFramesPerSecond(configuration.maxFps);

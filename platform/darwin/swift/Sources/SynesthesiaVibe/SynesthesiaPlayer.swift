@@ -33,6 +33,16 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         didSet { view?.debugInterval = debugInterval }
     }
 
+    @Published public var transitionConfiguration = SVTransitionConfiguration() {
+        didSet { view?.transitionConfiguration = transitionConfiguration }
+    }
+    @Published public var blendPattern = SVBlendPattern.random.rawValue {
+        didSet { view?.blendPattern = blendPattern }
+    }
+    public var presetRequestHandler: ((SVPresetRequest) -> Void)? {
+        didSet { view?.presetRequestHandler = presetRequestHandler }
+    }
+
     public let configuration: SVContextConfiguration
     public private(set) weak var view: SVView?
 
@@ -72,6 +82,9 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.debugInfoHandler = { [weak self] info in
             self?.debugInfo = info
         }
+        view.transitionConfiguration = transitionConfiguration
+        view.blendPattern = blendPattern
+        view.presetRequestHandler = presetRequestHandler
         self.view = view
         if let existing = view.context {
             context = existing
@@ -88,6 +101,7 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         guard self.view === view else { return }
         view.delegate = nil
         view.debugInfoHandler = nil
+        view.presetRequestHandler = nil
         self.view = nil
         context = nil
         prepareWorker.cancelPending()
@@ -108,6 +122,12 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
                 self.cancel(ticket)
             }
         }
+    }
+
+    public func updateTransitionConfiguration(_ update: (SVTransitionConfiguration) -> Void) {
+        let updated = transitionConfiguration.copy() as! SVTransitionConfiguration
+        update(updated)
+        transitionConfiguration = updated
     }
 
     public func pause() {

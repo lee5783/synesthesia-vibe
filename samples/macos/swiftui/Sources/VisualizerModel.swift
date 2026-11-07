@@ -15,16 +15,29 @@ import SynesthesiaVibe
 final class VisualizerModel: ObservableObject {
 
     static let defaultInterval: Double = 30
+    static let autoIntervals: [Double] = [10, 15, 30, 60]
+    static let blendDurations: [Float] = [0, 1, 2, 2.7, 4, 6, 8, 10]
+    static let defaultBlendDuration: Float = 2
+    static let blendPatternChoices: [Int] = [SVBlendPattern.random.rawValue] + Array(0..<SVBlendPatternCount)
     private static let liveInputSampleRate: Double = 44_100
     private static let tickInterval: Double = 0.5
 
     @Published var library: PresetLibrary
     @Published var selectedPresetName: String?
     @Published var isAutoChangeOn = false {
-        didSet { resetCountdown() }
+        didSet { applyTransitionConfiguration() }
     }
     @Published var autoChangeInterval = VisualizerModel.defaultInterval {
-        didSet { resetCountdown() }
+        didSet { applyTransitionConfiguration() }
+    }
+    @Published var blendDuration = VisualizerModel.defaultBlendDuration {
+        didSet { applyTransitionConfiguration() }
+    }
+    @Published var hardCutsOn = false {
+        didSet { applyTransitionConfiguration() }
+    }
+    @Published var blendPattern = SVBlendPattern.random.rawValue {
+        didSet { player.blendPattern = blendPattern }
     }
     @Published var audioSource = AudioSource.wav
     @Published var frameRate: Float {
@@ -39,7 +52,6 @@ final class VisualizerModel: ObservableObject {
 
     let player: SynesthesiaPlayer
 
-    @Published private var secondsUntilChange: Double = VisualizerModel.defaultInterval
     private var ticker: AnyCancellable?
     private var contextProbe: AnyCancellable?
     private var playerChanges: AnyCancellable?
@@ -66,7 +78,7 @@ final class VisualizerModel: ObservableObject {
     var subtitle: String {
         let position = currentIndex.map { "\($0 + 1) of \(presets.count)" } ?? "0 of \(presets.count)"
         guard isAutoChangeOn else { return "\(position) · Auto-change off" }
-        return "\(position) · Next preset in \(Int(ceil(secondsUntilChange))) s"
+        return "\(position) · Auto-change every \(Int(autoChangeInterval)) s"
     }
 
     var fpsCapText: String {
@@ -76,7 +88,14 @@ final class VisualizerModel: ObservableObject {
     var sampleRate: Double { VisualizerModel.liveInputSampleRate }
 
     var autoText: String {
-        isAutoChangeOn ? "every \(Int(autoChangeInterval)) s · next \(Int(ceil(secondsUntilChange))) s" : "off"
+        isAutoChangeOn ? "every \(Int(autoChangeInterval)) s" : "off"
+    }
+
+    var transitionText: String { SVBlendPattern.name(for: blendPattern) }
+
+    private var hardCutLoudness: Float {
+        let stored = UserDefaults.standard.float(forKey: "HardCutLoudness")
+        return stored > 0 ? stored : 2.5
     }
 
     var renderScale: CGFloat { player.view?.renderScale ?? 1 }
@@ -114,6 +133,10 @@ final class VisualizerModel: ObservableObject {
                 let info = player.presetInfo
                 NSLog("%@", "MacSwiftUISample: preset info \"\(name)\" version=\(info.presetVersion) warp_ps=\(info.warpPixelShaderVersion) comp_ps=\(info.compPixelShaderVersion) warp_shader=\(info.warpShaderActive) comp_shader=\(info.compShaderActive) fallback=\"\(player.presetFallbackReason)\"")
             }
+        applyTransitionConfiguration()
+        player.presetRequestHandler = { [weak self] request in
+            DispatchQueue.main.async { self?.handle(request) }
+        }
         startTicker()
         startWav()
         if let first = library.presets.first {
@@ -122,12 +145,11 @@ final class VisualizerModel: ObservableObject {
         startContextProbe()
     }
 
-    func load(_ preset: Preset, blend: Float = 2) {
+    func load(_ preset: Preset, blend: Float? = nil) {
         selectedPresetName = preset.name
-        resetCountdown()
         Task { [weak self] in
             do {
-                try await self?.player.loadPreset(at: preset.url, blendSeconds: blend)
+                try await self?.player.loadPreset(at: preset.url, blendSeconds: blend ?? self?.blendDuration ?? 0)
             } catch is CancellationError {
             } catch {
                 self?.audioError = error.localizedDescription
@@ -166,7 +188,6 @@ final class VisualizerModel: ObservableObject {
         let library = PresetLibrary(folderURL: url, defaultWavURL: self.library.defaultWavURL)
         self.library = library
         selectedPresetName = library.presets.first?.name
-        resetCountdown()
         if let first = library.presets.first {
             load(first, blend: 0)
         }
@@ -258,16 +279,25 @@ final class VisualizerModel: ObservableObject {
 
     private func tick() {
         updateFlatLevelHint()
-        guard isAutoChangeOn, !isUserPaused else { return }
-        secondsUntilChange -= VisualizerModel.tickInterval
-        guard secondsUntilChange <= 0 else { return }
-        guard !presets.isEmpty else { return }
-        let index = currentIndex ?? -1
-        load(presets[(index + 1) % presets.count])
     }
 
-    private func resetCountdown() {
-        secondsUntilChange = autoChangeInterval
+    private func applyTransitionConfiguration() {
+        player.updateTransitionConfiguration { configuration in
+            configuration.softCutSeconds = blendDuration
+            configuration.presetDuration = isAutoChangeOn ? Float(autoChangeInterval) : 0
+            configuration.presetDurationRandom = 0
+            configuration.hardCutsEnabled = hardCutsOn
+            configuration.hardCutLoudness = hardCutLoudness
+        }
+    }
+
+    private func handle(_ request: SVPresetRequest) {
+        let hardCut = request.reason == .hardCut
+        let blend = hardCut ? 0 : request.suggestedBlendSeconds
+        NSLog("%@", "MacSwiftUISample: preset request reason=\(hardCut ? "hard-cut" : "timer") blend=\(blend)")
+        guard !presets.isEmpty else { return }
+        let index = currentIndex ?? -1
+        load(presets[(index + 1) % presets.count], blend: blend)
     }
 
     private func updateFlatLevelHint() {

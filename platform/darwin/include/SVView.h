@@ -16,6 +16,7 @@
 
 #import "SVContext.h"
 #import "SVContextConfiguration.h"
+#import "SVTransitionConfiguration.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -48,6 +49,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^debugInfoHandler)(NSDictionary<NSString *, id> *info);
 @property (nonatomic, assign) float debugInterval;
 @property (nonatomic, assign) BOOL debugEnabled;
+@property (nonatomic, copy) SVTransitionConfiguration *transitionConfiguration;
+@property (nonatomic, assign) NSInteger blendPattern;
+@property (nonatomic, copy, nullable) void (^presetRequestHandler)(SVPresetRequest *request);
 
 - (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block;
 - (void)snapshotWithCompletion:(void (^)(CGImageRef _Nullable image))completion;

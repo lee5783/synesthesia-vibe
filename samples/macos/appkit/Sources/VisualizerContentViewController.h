@@ -39,6 +39,7 @@ NS_ASSUME_NONNULL_BEGIN
                           backend:(nullable NSString *)backend
                        renderScale:(CGFloat)renderScale
                               autoChangeText:(NSString *)autoChangeText
+                              transitionText:(NSString *)transitionText
                          lastError:(nullable NSString *)lastError
                             levels:(SVAudioLevels)levels;
 - (void)showMessage:(nullable NSString *)message isError:(BOOL)isError;

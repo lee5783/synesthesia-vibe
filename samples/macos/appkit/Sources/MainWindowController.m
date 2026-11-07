@@ -19,6 +19,8 @@ static const CGFloat MainWindowMinimumWidth = 1060.0;
 static const CGFloat MainWindowMinimumHeight = 560.0;
 static const NSTimeInterval MainWindowTickInterval = 0.5;
 static const double MainWindowDefaultAutoChangeInterval = 30.0;
+static const float MainWindowDefaultBlendSeconds = 2.0f;
+static const float MainWindowDefaultHardCutLoudness = 2.5f;
 static const NSTimeInterval MainWindowDenialHintSeconds = 4.0;
 static NSString *const MainWindowDefaultPresetName = @"shifter - swarm.milk";
 static NSToolbarItemIdentifier const MainWindowTransportItemIdentifier = @"transport";
@@ -82,7 +84,9 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 @property (nonatomic, copy, nullable) NSURL *currentPresetURL;
 @property (nonatomic, assign) BOOL isAutoChangeOn;
 @property (nonatomic, assign) double autoChangeInterval;
-@property (nonatomic, assign) double secondsUntilChange;
+@property (nonatomic, assign) BOOL isHardCutsOn;
+@property (nonatomic, assign) NSInteger blendPattern;
+@property (nonatomic, assign) float blendSeconds;
 @property (nonatomic, assign) BOOL isDebugOverlayOn;
 @property (nonatomic, assign) double flatLevelSeconds;
 @property (nonatomic, assign) BOOL didShowDenialHint;
@@ -111,9 +115,20 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
     if (self) {
         _presetURLs = [SampleBundle.presetURLs copy];
         _autoChangeInterval = MainWindowDefaultAutoChangeInterval;
-        _secondsUntilChange = MainWindowDefaultAutoChangeInterval;
+        _blendPattern = SVBlendPatternRandom;
+        _blendSeconds = MainWindowDefaultBlendSeconds;
         window.delegate = self;
         [self buildContent];
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        double launchInterval = [defaults doubleForKey:@"AutoChangeSeconds"];
+        if (launchInterval > 0.0) {
+            _autoChangeInterval = launchInterval;
+            _isAutoChangeOn = YES;
+        }
+        _isHardCutsOn = [defaults boolForKey:@"HardCuts"];
+        [self applyTransitionConfiguration];
+        [self updateInspectorState];
+        [self installPresetRequestHandler];
         [window center];
         [self startTickTimer];
         [self playWavAtURL:SampleBundle.defaultWavURL];
@@ -184,15 +199,37 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
     [self updateAudioDenialHint];
     if (self.isDebugOverlayOn)
         [self updateDebugOverlay];
-    if (!self.isAutoChangeOn || self.visualizerViewController.isPaused)
-        return;
+}
 
-    self.secondsUntilChange -= MainWindowTickInterval;
-    if (self.secondsUntilChange > 0.0) {
-        [self updateInspectorState];
-        return;
-    }
-    [self stepBy:1];
+- (void)applyTransitionConfiguration
+{
+    float loudness = [NSUserDefaults.standardUserDefaults floatForKey:@"HardCutLoudness"];
+    SVTransitionConfiguration *configuration = [[SVTransitionConfiguration alloc] init];
+    configuration.softCutSeconds = self.blendSeconds;
+    configuration.presetDuration = self.isAutoChangeOn ? (float)self.autoChangeInterval : 0.0f;
+    configuration.presetDurationRandom = 0.0f;
+    configuration.hardCutsEnabled = self.isHardCutsOn;
+    configuration.hardCutLoudness = loudness > 0.0f ? loudness : MainWindowDefaultHardCutLoudness;
+    self.visualizerViewController.transitionConfiguration = configuration;
+    self.visualizerViewController.blendSeconds = self.blendSeconds;
+}
+
+- (void)installPresetRequestHandler
+{
+    __weak MainWindowController *weakSelf = self;
+    self.visualizerViewController.presetRequestHandler = ^(SVPresetRequest *request) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf handlePresetRequest:request];
+        });
+    };
+}
+
+- (void)handlePresetRequest:(SVPresetRequest *)request
+{
+    BOOL hardCut = request.reason == SVPresetRequestReasonHardCut;
+    float blendSeconds = hardCut ? 0.0f : request.suggestedBlendSeconds;
+    NSLog(@"MacAppKitSample: preset request reason=%@ blend=%g", hardCut ? @"hard-cut" : @"timer", blendSeconds);
+    [self stepBy:1 blendSeconds:blendSeconds];
 }
 
 - (void)selectDefaultPreset
@@ -209,20 +246,23 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 
 - (void)loadPresetURL:(NSURL *)url
 {
+    [self loadPresetURL:url blendSeconds:self.blendSeconds];
+}
+
+- (void)loadPresetURL:(NSURL *)url blendSeconds:(float)blendSeconds
+{
     self.currentPresetURL = url;
     [self.sidebarViewController selectPresetAtURL:url];
-    [self.visualizerViewController loadPresetAtURL:url];
-    [self resetCountdown];
+    [self.visualizerViewController loadPresetAtURL:url blendSeconds:blendSeconds];
     [self updateWindowChrome];
 }
 
-- (void)resetCountdown
+- (void)stepBy:(NSInteger)offset
 {
-    self.secondsUntilChange = self.autoChangeInterval;
-    [self updateInspectorState];
+    [self stepBy:offset blendSeconds:self.blendSeconds];
 }
 
-- (void)stepBy:(NSInteger)offset
+- (void)stepBy:(NSInteger)offset blendSeconds:(float)blendSeconds
 {
     if (self.presetURLs.count == 0)
         return;
@@ -231,7 +271,7 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
     NSInteger base = current == NSNotFound ? 0 : (NSInteger)current;
     NSInteger count = (NSInteger)self.presetURLs.count;
     NSInteger next = ((base + offset) % count + count) % count;
-    [self loadPresetURL:self.presetURLs[(NSUInteger)next]];
+    [self loadPresetURL:self.presetURLs[(NSUInteger)next] blendSeconds:blendSeconds];
 }
 
 - (void)playWavAtURL:(NSURL *)url
@@ -267,9 +307,8 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 
 - (void)updateInspectorState
 {
-    [self.inspectorViewController setAutoChangeOn:self.isAutoChangeOn
-                                         interval:self.autoChangeInterval
-                                        remaining:self.secondsUntilChange];
+    [self.inspectorViewController setAutoChangeOn:self.isAutoChangeOn interval:self.autoChangeInterval];
+    [self.inspectorViewController setBlendPattern:self.blendPattern blendSeconds:self.blendSeconds hardCutsOn:self.isHardCutsOn];
     [self.inspectorViewController setFrameRate:self.visualizerViewController.preferredFramesPerSecond];
     [self updateWindowSubtitle];
 }
@@ -282,14 +321,14 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
         self.window.subtitle = [NSString stringWithFormat:@"%@ · Auto-change off", position];
         return;
     }
-    self.window.subtitle = [NSString stringWithFormat:@"%@ · Next preset in %.0f s", position, ceil(self.secondsUntilChange)];
+    self.window.subtitle = [NSString stringWithFormat:@"%@ · Auto-change every %.0f s", position, self.autoChangeInterval];
 }
 
 - (NSString *)autoChangeText
 {
     if (!self.isAutoChangeOn)
         return @"off";
-    return [NSString stringWithFormat:@"every %.0f s · next %.0f s", self.autoChangeInterval, ceil(self.secondsUntilChange)];
+    return [NSString stringWithFormat:@"every %.0f s", self.autoChangeInterval];
 }
 
 - (void)showError:(nullable NSError *)error
@@ -334,6 +373,7 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
                                                   backend:self.visualizerViewController.glVersionString
                                                renderScale:self.visualizerViewController.renderScale
                                                       autoChangeText:[self autoChangeText]
+                                                      transitionText:SVBlendPatternName(self.blendPattern)
                                                  lastError:info[@"last_error"]
                                                     levels:self.visualizerViewController.audioLevels];
 }
@@ -413,7 +453,33 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 - (void)inspectorViewController:(InspectorViewController *)controller didSetAutoChange:(BOOL)on
 {
     self.isAutoChangeOn = on;
-    [self resetCountdown];
+    [self applyTransitionConfiguration];
+    [self updateInspectorState];
+}
+
+- (void)inspectorViewController:(InspectorViewController *)controller didSetAutoChangeInterval:(double)interval
+{
+    self.autoChangeInterval = interval;
+    [self applyTransitionConfiguration];
+    [self updateInspectorState];
+}
+
+- (void)inspectorViewController:(InspectorViewController *)controller didSelectBlendPattern:(NSInteger)pattern
+{
+    self.blendPattern = pattern;
+    self.visualizerViewController.blendPattern = pattern;
+}
+
+- (void)inspectorViewController:(InspectorViewController *)controller didSetBlendSeconds:(float)seconds
+{
+    self.blendSeconds = seconds;
+    [self applyTransitionConfiguration];
+}
+
+- (void)inspectorViewController:(InspectorViewController *)controller didSetHardCuts:(BOOL)on
+{
+    self.isHardCutsOn = on;
+    [self applyTransitionConfiguration];
 }
 
 - (void)inspectorViewController:(InspectorViewController *)controller didSetFrameRate:(float)frameRate

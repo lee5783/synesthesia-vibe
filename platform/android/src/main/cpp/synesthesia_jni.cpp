@@ -151,6 +151,54 @@ namespace
         g_debugSinks.erase(handle);
     }
 
+    struct RequestSink
+    {
+        std::mutex mutex;
+        jlong sequence = 0;
+        float reason = 0.0f;
+        float blendSeconds = 0.0f;
+    };
+
+    std::mutex g_requestSinksMutex;
+    std::unordered_map<jlong, std::unique_ptr<RequestSink>> g_requestSinks;
+
+    RequestSink* FindRequestSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_requestSinksMutex);
+        auto found = g_requestSinks.find(handle);
+        return found != g_requestSinks.end() ? found->second.get() : nullptr;
+    }
+
+    RequestSink* AcquireRequestSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_requestSinksMutex);
+        std::unique_ptr<RequestSink>& slot = g_requestSinks[handle];
+
+        if (!slot)
+            slot.reset(new RequestSink());
+
+        return slot.get();
+    }
+
+    void ReleaseRequestSink(jlong handle)
+    {
+        std::lock_guard<std::mutex> guard(g_requestSinksMutex);
+        g_requestSinks.erase(handle);
+    }
+
+    void StorePresetRequest(sv_context*, const sv_preset_request* request, void* user)
+    {
+        RequestSink* sink = static_cast<RequestSink*>(user);
+
+        if (request == nullptr || sink == nullptr)
+            return;
+
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        sink->reason = static_cast<float>(request->reason);
+        sink->blendSeconds = request->suggested_blend_seconds;
+        ++sink->sequence;
+    }
+
     void StoreDebugInfo(const sv_debug_info* info, void* user)
     {
         DebugSink* sink = static_cast<DebugSink*>(user);
@@ -387,6 +435,7 @@ Java_com_synesthesiavibe_SynesthesiaContext_nativeDestroy(JNIEnv*, jclass, jlong
 {
     sv_destroy(ToContext(handle));
     ReleaseDebugSink(handle);
+    ReleaseRequestSink(handle);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -553,6 +602,80 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_synesthesiavibe_SynesthesiaContext_nativeSetPlaybackRate(JNIEnv*, jclass, jlong handle, jfloat rate)
 {
     sv_set_playback_rate(ToContext(handle), rate);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetTransitionConfig(JNIEnv*, jclass, jlong handle, jfloat softCutSeconds, jfloat presetDuration, jfloat presetDurationRand, jboolean hardCutsEnabled, jfloat hardCutLoudness, jfloat hardCutHalflife)
+{
+    sv_transition_config config = {};
+    config.soft_cut_seconds = softCutSeconds;
+    config.preset_duration = presetDuration;
+    config.preset_duration_rand = presetDurationRand;
+    config.hard_cuts_enabled = hardCutsEnabled == JNI_TRUE;
+    config.hard_cut_loudness = hardCutLoudness;
+    config.hard_cut_halflife = hardCutHalflife;
+    sv_set_transition_config(ToContext(handle), &config);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetBlendPattern(JNIEnv*, jclass, jlong handle, jint pattern)
+{
+    sv_set_blend_pattern(ToContext(handle), pattern);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeSetPresetRequestEnabled(JNIEnv*, jclass, jlong handle, jboolean enabled)
+{
+    if (enabled != JNI_TRUE)
+    {
+        sv_set_preset_request_callback(ToContext(handle), nullptr, nullptr);
+        RequestSink* sink = FindRequestSink(handle);
+
+        if (sink == nullptr)
+            return 0;
+
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        return sink->sequence;
+    }
+
+    RequestSink* sink = AcquireRequestSink(handle);
+    sv_set_preset_request_callback(ToContext(handle), StorePresetRequest, sink);
+    std::lock_guard<std::mutex> guard(sink->mutex);
+    return sink->sequence;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativePresetRequestSequence(JNIEnv*, jclass, jlong handle)
+{
+    RequestSink* sink = FindRequestSink(handle);
+
+    if (sink == nullptr)
+        return 0;
+
+    std::lock_guard<std::mutex> guard(sink->mutex);
+    return sink->sequence;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_synesthesiavibe_SynesthesiaContext_nativeReadPresetRequest(JNIEnv* env, jclass, jlong handle, jfloatArray valuesOut)
+{
+    RequestSink* sink = FindRequestSink(handle);
+
+    if (sink == nullptr || valuesOut == nullptr || env->GetArrayLength(valuesOut) < 2)
+        return 0;
+
+    float values[2];
+    jlong sequence;
+
+    {
+        std::lock_guard<std::mutex> guard(sink->mutex);
+        values[0] = sink->reason;
+        values[1] = sink->blendSeconds;
+        sequence = sink->sequence;
+    }
+
+    env->SetFloatArrayRegion(valuesOut, 0, 2, values);
+    return sequence;
 }
 
 extern "C" JNIEXPORT jlong JNICALL

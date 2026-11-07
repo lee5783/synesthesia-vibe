@@ -82,6 +82,17 @@ namespace
     static_assert(offsetof(WebDebugReport, warpPsVersion) == 92, "debug report layout is read by synesthesia-context.js");
     static_assert(offsetof(WebDebugReport, compPsVersion) == 96, "debug report layout is read by synesthesia-context.js");
 
+    struct WebPresetRequest
+    {
+        int32_t sequence;
+        int32_t reason;
+        float suggestedBlendSeconds;
+    };
+
+    static_assert(sizeof(WebPresetRequest) == 12, "preset request layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebPresetRequest, reason) == 4, "preset request layout is read by synesthesia-context.js");
+    static_assert(offsetof(WebPresetRequest, suggestedBlendSeconds) == 8, "preset request layout is read by synesthesia-context.js");
+
     std::string g_glStrings;
     std::string g_captureError;
     std::string g_validateError;
@@ -91,6 +102,7 @@ namespace
     std::string g_debugLastError;
     std::string g_debugFallbackReason;
     std::string g_presetFallbackReason;
+    WebPresetRequest g_presetRequest = {};
 
     void* GetGlProcAddress(const char* name)
     {
@@ -100,6 +112,13 @@ namespace
     std::string ToString(const char* text)
     {
         return text != nullptr ? std::string(text) : std::string();
+    }
+
+    void CopyPresetRequest(sv_context*, const sv_preset_request* request, void*)
+    {
+        g_presetRequest.sequence += 1;
+        g_presetRequest.reason = static_cast<int32_t>(request->reason);
+        g_presetRequest.suggestedBlendSeconds = request->suggested_blend_seconds;
     }
 
     void CopyDebugInfo(const sv_debug_info* info, void*)
@@ -162,7 +181,14 @@ namespace
         return directory + "/" + name;
     }
 
-    sv_status CaptureFrames(sv_context* ctx, const std::string& wavPath, const std::vector<int>& frames, const std::string& outputDirectory, bool writesFrameState, std::string& error)
+    struct CaptureBlend
+    {
+        std::string presetPath;
+        int atFrame = -1;
+        float seconds = 0.0f;
+    };
+
+    sv_status CaptureFrames(sv_context* ctx, const std::string& wavPath, const std::vector<int>& frames, const std::string& outputDirectory, bool writesFrameState, std::string& error, const CaptureBlend& blend = CaptureBlend())
     {
         synesthesia_vibe_demo::WavReader reader;
         bool hasWav = !wavPath.empty();
@@ -194,6 +220,17 @@ namespace
 
         for (int frame = 0; frame <= lastFrame; ++frame)
         {
+            if (frame + 1 == blend.atFrame)
+            {
+                status = sv_load_preset(ctx, blend.presetPath.c_str(), blend.seconds);
+
+                if (status != SV_OK)
+                {
+                    error = "could not load blend preset " + blend.presetPath + " at frame " + std::to_string(frame);
+                    break;
+                }
+            }
+
             if (hasWav && reader.FeedNextRenderFrame(kSamplesPerRenderFrame, pcm))
                 sv_push_pcm_s16(ctx, pcm.data(), kSamplesPerRenderFrame, reader.Channels());
             else
@@ -293,6 +330,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE sv_context* sv_web_create(
     g_debugReport = {};
     g_debugPresetName.clear();
     g_debugLastError.clear();
+    g_presetRequest = {};
     return sv_create(&config);
 }
 
@@ -302,6 +340,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_destroy(sv_context* ctx)
     g_debugReport = {};
     g_debugPresetName.clear();
     g_debugLastError.clear();
+    g_presetRequest = {};
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_load_preset(sv_context* ctx, const char* path, float blendSeconds)
@@ -426,6 +465,33 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_playback_rate(sv_context* ctx, f
     sv_set_playback_rate(ctx, rate);
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_transition_config(sv_context* ctx, float softCutSeconds, float presetDuration, float presetDurationRand, int hardCutsEnabled, float hardCutLoudness, float hardCutHalflife)
+{
+    sv_transition_config config = {};
+    config.soft_cut_seconds = softCutSeconds;
+    config.preset_duration = presetDuration;
+    config.preset_duration_rand = presetDurationRand;
+    config.hard_cuts_enabled = hardCutsEnabled != 0;
+    config.hard_cut_loudness = hardCutLoudness;
+    config.hard_cut_halflife = hardCutHalflife;
+    sv_set_transition_config(ctx, &config);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_blend_pattern(sv_context* ctx, int pattern)
+{
+    sv_set_blend_pattern(ctx, pattern);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_preset_request_enabled(sv_context* ctx, int enabled)
+{
+    sv_set_preset_request_callback(ctx, enabled != 0 ? CopyPresetRequest : nullptr, nullptr);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE const void* sv_web_preset_request()
+{
+    return &g_presetRequest;
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void sv_web_set_debug_enabled(sv_context* ctx, int enabled)
 {
     sv_set_debug_callback(ctx, enabled != 0 ? CopyDebugInfo : nullptr, nullptr);
@@ -512,6 +578,32 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_capture(sv_context* ctx, const char* 
 
     if (status == SV_ERR_ARG && g_captureError.empty())
         g_captureError = "capture needs at least one non-negative frame and an output directory";
+
+    return status;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sv_web_capture_blend(sv_context* ctx, const char* wavPath, const int* frames, int frameCount,
+    const char* outputDirectory, int writesFrameState, const char* blendPresetPath, int blendAtFrame, float blendSeconds)
+{
+    g_captureError.clear();
+    sv_status status = SV_ERR_ARG;
+
+    if (frames != nullptr && frameCount > 0 && outputDirectory != nullptr && blendPresetPath != nullptr && blendAtFrame >= 0)
+    {
+        std::vector<int> wanted(frames, frames + frameCount);
+        std::sort(wanted.begin(), wanted.end());
+        wanted.erase(std::unique(wanted.begin(), wanted.end()), wanted.end());
+        wanted.erase(wanted.begin(), std::lower_bound(wanted.begin(), wanted.end(), 0));
+        CaptureBlend blend;
+        blend.presetPath = blendPresetPath;
+        blend.atFrame = blendAtFrame;
+        blend.seconds = blendSeconds;
+        if (!wanted.empty())
+            status = CaptureFrames(ctx, ToString(wavPath), wanted, ToString(outputDirectory), writesFrameState != 0, g_captureError, blend);
+    }
+
+    if (status == SV_ERR_ARG && g_captureError.empty())
+        g_captureError = "blend capture needs a frame, an output directory, a blend preset and a non-negative blend frame";
 
     return status;
 }
