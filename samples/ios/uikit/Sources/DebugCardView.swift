@@ -35,7 +35,7 @@ final class DebugCardView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    func update(info: [String: Any], cap: String, gl: String, audio: String, auto: String, renderScale: CGFloat) {
+    func update(info: [String: Any], cap: String, gl: String, audio: String, auto: String, transition: String, renderScale: CGFloat) {
         let fps = Self.number(info, "display_fps")
         fpsLabel.text = String(format: "%.1f", fps)
         fpsLabel.textColor = fps < 50 ? DesignTokens.warning : DesignTokens.success
@@ -45,7 +45,7 @@ final class DebugCardView: UIView {
         sizeValue.text = String(format: "%d×%d @%.1f", Self.integer(info, "width"), Self.integer(info, "height"), Double(renderScale))
         glValue.text = gl
         audioValue.text = audio
-        rateValue.text = "1.0× · \(VisualizerSession.transitionName)"
+        rateValue.text = "1.0× · \(transition)"
         autoValue.text = auto
         bassBar.value = CGFloat(Self.number(info, "bass")) / 3
         midBar.value = CGFloat(Self.number(info, "mid")) / 3
@@ -56,7 +56,7 @@ final class DebugCardView: UIView {
         errorValue.text = error
     }
 
-    func reset(cap: String, gl: String, audio: String, auto: String) {
+    func reset(cap: String, gl: String, audio: String, auto: String, transition: String) {
         fpsLabel.text = "--"
         fpsLabel.textColor = DesignTokens.success
         capLabel.text = "fps · cap \(cap)"
@@ -65,7 +65,7 @@ final class DebugCardView: UIView {
         sizeValue.text = "--"
         glValue.text = gl
         audioValue.text = audio
-        rateValue.text = "1.0× · \(VisualizerSession.transitionName)"
+        rateValue.text = "1.0× · \(transition)"
         autoValue.text = auto
         bassBar.value = 0
         midBar.value = 0

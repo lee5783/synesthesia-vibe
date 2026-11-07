@@ -28,6 +28,8 @@ struct WarpBlitInput
     bool wrap;
     int texSizeX;
     int texSizeY;
+    bool alphaBlend;
+    bool flipAlpha;
 };
 
 uint32_t PackDecayColor(float decay);

@@ -17,6 +17,7 @@ struct DebugOverlayCard: View {
     let glVersion: String?
     let renderScale: CGFloat
     let autoText: String
+    let transitionText: String
     let levels: SVAudioLevels
 
     var body: some View {
@@ -56,7 +57,7 @@ struct DebugOverlayCard: View {
             row("size", sizeText, truncating: false)
             row("gl", glText, truncating: false)
             row("audio", audioText, truncating: true)
-            row("rate", "1.0× · Blend", truncating: false)
+            row("rate", "1.0× · \(transitionText)", truncating: false)
             row("auto", autoText, truncating: false)
         }
     }

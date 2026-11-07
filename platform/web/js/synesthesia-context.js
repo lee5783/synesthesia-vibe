@@ -15,6 +15,22 @@ const FLOAT_BYTES = 4;
 const INT_BYTES = 4;
 const DOUBLE_BYTES = 8;
 const DEBUG_SEQUENCE_OFFSET = 8;
+const REQUEST_REASON_OFFSET = 4;
+const REQUEST_BLEND_OFFSET = 8;
+const BLEND_PATTERN_RANDOM = -1;
+const BLEND_PATTERN_NAMES = Object.freeze([
+    "Fade", "Directional Wipe", "Plasma", "Radial", "Clock", "Spiral", "Diamond", "Nuclear Clock", "Square", "Checkerboard Wipe",
+    "Curtain", "Bubble", "Kaleidoscope", "Moebius Strip", "Star", "Disco Floor", "Fire", "Whirlpool Drain", "Julia Fractal"
+]);
+const REQUEST_REASONS = Object.freeze(["timer", "hardCut"]);
+const DEFAULT_TRANSITION_CONFIG = Object.freeze({
+    softCutSeconds: 2.7,
+    presetDuration: 16,
+    presetDurationRand: 10,
+    hardCutsEnabled: false,
+    hardCutLoudness: 2.5,
+    hardCutHalflife: 60
+});
 
 export class SynesthesiaContext {
 
@@ -27,6 +43,20 @@ export class SynesthesiaContext {
     #onDebugInfo = null;
     #debugReport = 0;
     #debugSequence = 0;
+    #onPresetRequest = null;
+    #requestSequence = 0;
+
+    static get BLEND_PATTERN_RANDOM() {
+        return BLEND_PATTERN_RANDOM;
+    }
+
+    static get BLEND_PATTERN_NAMES() {
+        return BLEND_PATTERN_NAMES;
+    }
+
+    static get DEFAULT_TRANSITION_CONFIG() {
+        return DEFAULT_TRANSITION_CONFIG;
+    }
 
     constructor(module, handle) {
         this.#module = module;
@@ -219,6 +249,9 @@ export class SynesthesiaContext {
 
         if (this.#onDebugInfo !== null)
             this.#deliverDebugInfo();
+
+        if (this.#onPresetRequest !== null)
+            this.#deliverPresetRequest();
     }
 
     resize(widthPixels, heightPixels) {
@@ -258,6 +291,46 @@ export class SynesthesiaContext {
 
         if (enabled)
             this.#debugSequence = this.#module.HEAP32[(this.#debugReportPointer() + DEBUG_SEQUENCE_OFFSET) / INT_BYTES];
+    }
+
+    setTransitionConfig(config = {}) {
+        const merged = { ...DEFAULT_TRANSITION_CONFIG, ...config };
+        this.#module._sv_web_set_transition_config(
+            this.#requireHandle(),
+            merged.softCutSeconds,
+            merged.presetDuration,
+            merged.presetDurationRand,
+            merged.hardCutsEnabled ? 1 : 0,
+            merged.hardCutLoudness,
+            merged.hardCutHalflife
+        );
+    }
+
+    setBlendPattern(pattern) {
+        this.#module._sv_web_set_blend_pattern(this.#requireHandle(), pattern);
+    }
+
+    get onPresetRequest() {
+        return this.#onPresetRequest;
+    }
+
+    set onPresetRequest(handler) {
+        const handle = this.#requireHandle();
+
+        if (handler !== null && handler !== undefined && typeof handler !== "function")
+            throw new TypeError("onPresetRequest takes a function or null");
+
+        const enabled = typeof handler === "function";
+        const wasEnabled = this.#onPresetRequest !== null;
+        this.#onPresetRequest = enabled ? handler : null;
+
+        if (enabled === wasEnabled)
+            return;
+
+        this.#module._sv_web_set_preset_request_enabled(handle, enabled ? 1 : 0);
+
+        if (enabled)
+            this.#requestSequence = this.#module.HEAP32[this.#module._sv_web_preset_request() / INT_BYTES];
     }
 
     setDebugInterval(seconds) {
@@ -321,6 +394,7 @@ export class SynesthesiaContext {
         this.#module._sv_web_destroy(this.#handle);
         this.#handle = 0;
         this.#onDebugInfo = null;
+        this.#onPresetRequest = null;
 
         if (this.#scratch !== 0)
             this.#module._free(this.#scratch);
@@ -361,11 +435,47 @@ export class SynesthesiaContext {
             throw new SynesthesiaError(status, this.#module.UTF8ToString(this.#module._sv_web_capture_error()));
     }
 
+    captureBlendFrames(wavPath, frames, outputDirectory, writesFrameState, blend) {
+        const handle = this.#requireHandle();
+        const strings = [];
+        const list = this.#module._malloc(Math.max(frames.length, 1) * INT_BYTES);
+        let status;
+
+        try {
+            this.#module.HEAP32.set(Int32Array.from(frames), list / INT_BYTES);
+            const wav = allocString(this.#module, wavPath, strings);
+            const directory = allocString(this.#module, outputDirectory, strings);
+            const preset = allocString(this.#module, blend.preset, strings);
+            status = this.#module._sv_web_capture_blend(handle, wav, list, frames.length, directory, writesFrameState ? 1 : 0, preset, blend.atFrame, blend.seconds);
+        } finally {
+            strings.forEach(pointer => this.#module._free(pointer));
+            this.#module._free(list);
+        }
+
+        if (status !== SynesthesiaError.SV_OK)
+            throw new SynesthesiaError(status, this.#module.UTF8ToString(this.#module._sv_web_capture_error()));
+    }
+
     #debugReportPointer() {
         if (this.#debugReport === 0)
             this.#debugReport = this.#module._sv_web_debug_report();
 
         return this.#debugReport;
+    }
+
+    #deliverPresetRequest() {
+        const module = this.#module;
+        const base = module._sv_web_preset_request();
+        const sequence = module.HEAP32[base / INT_BYTES];
+
+        if (sequence === this.#requestSequence)
+            return;
+
+        this.#requestSequence = sequence;
+        this.#onPresetRequest({
+            reason: REQUEST_REASONS[module.HEAP32[(base + REQUEST_REASON_OFFSET) / INT_BYTES]] ?? "timer",
+            suggestedBlendSeconds: module.HEAPF32[(base + REQUEST_BLEND_OFFSET) / INT_BYTES]
+        });
     }
 
     #deliverDebugInfo() {

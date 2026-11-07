@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import com.synesthesiavibe.AudioInput
+import com.synesthesiavibe.BlendPattern
+import com.synesthesiavibe.TransitionConfiguration
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -97,6 +99,11 @@ class MainActivity : ComponentActivity() {
             validatePath = intent.getStringExtra(EXTRA_VALIDATE)?.let(::File),
             validateText = intent.getStringExtra(EXTRA_VALIDATE_TEXT),
             temporaryDirectory = cacheDir,
+            initialAutoChangeSeconds = intent.getFloatExtra(EXTRA_AUTO_CHANGE_SECONDS, 0f),
+            initialBlendSeconds = intent.getFloatExtra(EXTRA_BLEND_SECONDS, VisualizerController.BLEND_SECONDS),
+            initialBlendPattern = intent.getIntExtra(EXTRA_BLEND_PATTERN, BlendPattern.RANDOM),
+            initialHardCuts = intent.getBooleanExtra(EXTRA_HARD_CUTS, false),
+            hardCutLoudness = intent.getFloatExtra(EXTRA_HARD_CUT_LOUDNESS, TransitionConfiguration.DEFAULT_HARD_CUT_LOUDNESS),
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) observeProjection()
         setContent {
@@ -181,5 +188,10 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_PLAYBACK_RATE = "playbackRate"
         const val EXTRA_VALIDATE = "validate"
         const val EXTRA_VALIDATE_TEXT = "validateText"
+        const val EXTRA_AUTO_CHANGE_SECONDS = "autoChangeSeconds"
+        const val EXTRA_BLEND_SECONDS = "blendSeconds"
+        const val EXTRA_BLEND_PATTERN = "blendPattern"
+        const val EXTRA_HARD_CUTS = "hardCuts"
+        const val EXTRA_HARD_CUT_LOUDNESS = "hardCutLoudness"
     }
 }

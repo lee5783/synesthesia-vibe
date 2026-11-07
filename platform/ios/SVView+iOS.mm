@@ -77,6 +77,9 @@ namespace
     float _debugInterval;
     BOOL _debugEnabled;
     void (^_debugInfoHandler)(NSDictionary<NSString *, id> *);
+    SVTransitionConfiguration *_transitionConfiguration;
+    NSInteger _blendPattern;
+    void (^_presetRequestHandler)(SVPresetRequest *);
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
     BOOL _applicationActive;
     BOOL _contextPaused;
@@ -216,6 +219,8 @@ namespace
     _renderScale = kMaximumRenderScale;
     _playbackRate = SVNormalizedPlaybackRate(1.0f);
     _debugInterval = 1.0f;
+    _transitionConfiguration = [[SVTransitionConfiguration alloc] init];
+    _blendPattern = SVBlendPatternRandom;
     _applicationActive = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
     self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
     [self configureDrawableLayer];
@@ -297,6 +302,39 @@ namespace
 {
     _debugInterval = debugInterval;
     self.context.debugInterval = debugInterval;
+}
+
+- (SVTransitionConfiguration *)transitionConfiguration
+{
+    return _transitionConfiguration;
+}
+
+- (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
+{
+    _transitionConfiguration = [transitionConfiguration copy] ?: [[SVTransitionConfiguration alloc] init];
+    self.context.transitionConfiguration = _transitionConfiguration;
+}
+
+- (NSInteger)blendPattern
+{
+    return _blendPattern;
+}
+
+- (void)setBlendPattern:(NSInteger)blendPattern
+{
+    _blendPattern = blendPattern;
+    self.context.blendPattern = blendPattern;
+}
+
+- (void (^)(SVPresetRequest *))presetRequestHandler
+{
+    return _presetRequestHandler;
+}
+
+- (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
+{
+    _presetRequestHandler = [presetRequestHandler copy];
+    self.context.presetRequestHandler = _presetRequestHandler;
 }
 
 - (BOOL)debugEnabled
@@ -562,6 +600,9 @@ namespace
     context.debugInterval = _debugInterval;
     context.debugInfoHandler = _debugInfoHandler;
     context.debugEnabled = _debugEnabled;
+    context.transitionConfiguration = _transitionConfiguration;
+    context.blendPattern = _blendPattern;
+    context.presetRequestHandler = _presetRequestHandler;
     _contextPaused = NO;
 
     if (!_hasPreferredFramesPerSecond)

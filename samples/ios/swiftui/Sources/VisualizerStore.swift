@@ -37,11 +37,12 @@ final class VisualizerStore: ObservableObject {
         }
     }
 
-    static let blendSeconds: Float = 2
+    static let blendDurations: [Float] = [0, 1, 2, 2.7, 4, 6, 8, 10]
+    static let defaultBlendDuration: Float = 2
     static let frameRates: [Float] = [30, 60, 120, 0]
     static let autoIntervals: [TimeInterval] = [10, 15, 30, 60]
     static let bundledFolderName = "mvp-presets"
-    static let transitionName = "Blend"
+    static let blendPatternChoices: [Int] = [SVBlendPattern.random.rawValue] + Array(0..<SVBlendPatternCount)
 
     let player: SynesthesiaPlayer
     let library: PresetLibrary
@@ -49,7 +50,6 @@ final class VisualizerStore: ObservableObject {
     @Published private(set) var presets: [Preset]
     @Published private(set) var currentIndex = 0
     @Published private(set) var folderName: String
-    @Published private(set) var autoRemaining: TimeInterval = 30
     @Published private(set) var sourceNotes: [AudioSource: String] = [:]
     @Published private(set) var glVersion = ""
     @Published private(set) var renderScale: CGFloat = 1
@@ -57,14 +57,23 @@ final class VisualizerStore: ObservableObject {
     @Published private(set) var loadError: String?
 
     @Published var autoChangeEnabled = false {
-        didSet {
-            resetAutoCountdown()
-            updateTimer()
-        }
+        didSet { applyTransitionConfiguration() }
     }
 
     @Published private(set) var autoInterval: TimeInterval = 30 {
-        didSet { resetAutoCountdown() }
+        didSet { applyTransitionConfiguration() }
+    }
+
+    @Published private(set) var blendDuration = VisualizerStore.defaultBlendDuration {
+        didSet { applyTransitionConfiguration() }
+    }
+
+    @Published var hardCutsEnabled = false {
+        didSet { applyTransitionConfiguration() }
+    }
+
+    @Published private(set) var blendPattern = SVBlendPattern.random.rawValue {
+        didSet { player.blendPattern = blendPattern }
     }
 
     @Published var fpsSetting: Float
@@ -83,7 +92,6 @@ final class VisualizerStore: ObservableObject {
 
     private weak var inlineView: SVView?
     private var securityScopedFolderURL: URL?
-    private var autoTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
     private lazy var bundledWavSampleRate: Int = {
         guard let url = library.defaultWavURL, let feeder = try? SVWavFeeder(url: url) else { return 44_100 }
@@ -97,10 +105,13 @@ final class VisualizerStore: ObservableObject {
         self.presets = library.presets
         self.fpsSetting = fps
         player.preferredFramesPerSecond = fps
+        applyTransitionConfiguration()
+        player.presetRequestHandler = { [weak self] request in
+            DispatchQueue.main.async { self?.handle(request) }
+        }
         player.$isPaused
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.updateTimer()
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
@@ -131,7 +142,7 @@ final class VisualizerStore: ObservableObject {
     }
 
     deinit {
-        autoTimer?.invalidate()
+        player.presetRequestHandler = nil
         securityScopedFolderURL?.stopAccessingSecurityScopedResource()
     }
 
@@ -154,12 +165,21 @@ final class VisualizerStore: ObservableObject {
 
     var nowPlayingSubtitle: String {
         guard autoChangeEnabled else { return "\(positionText) · Auto-change off" }
-        return "\(positionText) · Next preset in \(Int(autoRemaining.rounded(.up))) s"
+        return "\(positionText) · Auto-change every \(Int(autoInterval)) s"
     }
 
     var autoText: String {
         guard autoChangeEnabled else { return "off" }
-        return "every \(Int(autoInterval)) s · next \(Int(autoRemaining.rounded(.up))) s"
+        return "every \(Int(autoInterval)) s"
+    }
+
+    var transitionLabel: String { SVBlendPattern.name(for: blendPattern) }
+
+    var blendDurationLabel: String { Self.blendDurationLabel(blendDuration) }
+
+    var hardCutLoudness: Float {
+        let stored = UserDefaults.standard.float(forKey: "HardCutLoudness")
+        return stored > 0 ? stored : 2.5
     }
 
     var intervalLabel: String { Self.intervalLabel(autoInterval) }
@@ -180,6 +200,10 @@ final class VisualizerStore: ObservableObject {
         interval >= 60 ? "\(Int(interval / 60)) minute" : "\(Int(interval)) seconds"
     }
 
+    static func blendDurationLabel(_ seconds: Float) -> String {
+        seconds <= 0 ? "Instant" : String(format: "%g s", seconds)
+    }
+
     static func rateLabel(_ sampleRate: Int) -> String {
         String(format: "%.1f kHz", Double(sampleRate) / 1000)
     }
@@ -189,11 +213,10 @@ final class VisualizerStore: ObservableObject {
         select(0, blend: 0)
     }
 
-    func select(_ index: Int, blend: Float = VisualizerStore.blendSeconds) {
+    func select(_ index: Int, blend: Float? = nil) {
         guard presets.indices.contains(index) else { return }
         currentIndex = index
-        resetAutoCountdown()
-        load(presets[index], blend: blend)
+        load(presets[index], blend: blend ?? blendDuration)
     }
 
     func reloadCurrentPreset() {
@@ -201,10 +224,10 @@ final class VisualizerStore: ObservableObject {
         load(preset, blend: 0)
     }
 
-    func advance(by offset: Int) {
+    func advance(by offset: Int, blend: Float? = nil) {
         guard !presets.isEmpty else { return }
         let count = presets.count
-        select(((currentIndex + offset) % count + count) % count)
+        select(((currentIndex + offset) % count + count) % count, blend: blend)
     }
 
     func select(source: AudioSource) {
@@ -216,6 +239,14 @@ final class VisualizerStore: ObservableObject {
         autoInterval = interval
     }
 
+    func setBlendDuration(_ seconds: Float) {
+        blendDuration = seconds
+    }
+
+    func setBlendPattern(_ pattern: Int) {
+        blendPattern = pattern
+    }
+
     func chooseFolder(_ url: URL) {
         let started = url.startAccessingSecurityScopedResource()
         securityScopedFolderURL?.stopAccessingSecurityScopedResource()
@@ -224,7 +255,6 @@ final class VisualizerStore: ObservableObject {
         let found = Self.presets(in: url)
         if !found.isEmpty { presets = found }
         currentIndex = 0
-        resetAutoCountdown()
         if let first = presets.first { load(first) }
     }
 
@@ -289,28 +319,26 @@ final class VisualizerStore: ObservableObject {
         }
     }
 
-    private func load(_ preset: Preset, blend: Float = VisualizerStore.blendSeconds) {
+    private func load(_ preset: Preset, blend: Float? = nil) {
         loadError = nil
-        Task { try? await player.loadPreset(at: preset.url, blendSeconds: blend) }
+        Task { try? await player.loadPreset(at: preset.url, blendSeconds: blend ?? blendDuration) }
     }
 
-    private func resetAutoCountdown() {
-        autoRemaining = autoInterval
+    private func applyTransitionConfiguration() {
+        player.updateTransitionConfiguration { configuration in
+            configuration.softCutSeconds = blendDuration
+            configuration.presetDuration = autoChangeEnabled ? Float(autoInterval) : 0
+            configuration.presetDurationRandom = 0
+            configuration.hardCutsEnabled = hardCutsEnabled
+            configuration.hardCutLoudness = hardCutLoudness
+        }
     }
 
-    private func updateTimer() {
-        autoTimer?.invalidate()
-        autoTimer = nil
-        guard autoChangeEnabled, !player.isPaused else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
-        RunLoop.main.add(timer, forMode: .common)
-        autoTimer = timer
-    }
-
-    private func tick() {
-        autoRemaining -= 1
-        guard autoRemaining <= 0 else { return }
-        advance(by: 1)
+    private func handle(_ request: SVPresetRequest) {
+        let hardCut = request.reason == .hardCut
+        let blend = hardCut ? 0 : request.suggestedBlendSeconds
+        NSLog("%@", "iOSSwiftUISample: preset request reason=\(hardCut ? "hard-cut" : "timer") blend=\(blend)")
+        advance(by: 1, blend: blend)
     }
 
     private static func presets(in directory: URL) -> [Preset] {

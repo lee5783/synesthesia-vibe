@@ -55,7 +55,7 @@ export class CaptureSession {
         return "frame_" + String(frame).padStart(4, "0") + "." + extension;
     }
 
-    async run({ preset, wav = null, frames, outDir, writesFrameState = true, configuration = {} }) {
+    async run({ preset, wav = null, frames, outDir, writesFrameState = true, configuration = {}, blend = null }) {
         const wanted = [...new Set(frames.filter(frame => Number.isInteger(frame) && frame >= 0))].sort((a, b) => a - b);
 
         if (wanted.length === 0)
@@ -77,7 +77,13 @@ export class CaptureSession {
                 context.loadPreset(preset, 0);
                 fs.writeFile(outDir + "/" + CaptureSession.GL_STRINGS_FILE_NAME,
                     SynesthesiaContext.glStrings(this.#module) + CaptureSession.#unmaskedGlStrings(gl) + "USER_AGENT=" + navigator.userAgent + "\n");
-                context.captureFrames(wav, wanted, outDir, writesFrameState);
+
+                if (blend === null) {
+                    context.captureFrames(wav, wanted, outDir, writesFrameState);
+                } else {
+                    context.setBlendPattern(blend.pattern);
+                    context.captureBlendFrames(wav, wanted, outDir, writesFrameState, blend);
+                }
             } finally {
                 context.close();
             }

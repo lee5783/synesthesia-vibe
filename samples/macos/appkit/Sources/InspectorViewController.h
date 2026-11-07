@@ -14,6 +14,10 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol InspectorViewControllerDelegate <NSObject>
 
 - (void)inspectorViewController:(InspectorViewController *)controller didSetAutoChange:(BOOL)on;
+- (void)inspectorViewController:(InspectorViewController *)controller didSetAutoChangeInterval:(double)interval;
+- (void)inspectorViewController:(InspectorViewController *)controller didSelectBlendPattern:(NSInteger)pattern;
+- (void)inspectorViewController:(InspectorViewController *)controller didSetBlendSeconds:(float)seconds;
+- (void)inspectorViewController:(InspectorViewController *)controller didSetHardCuts:(BOOL)on;
 - (void)inspectorViewController:(InspectorViewController *)controller didSetFrameRate:(float)frameRate;
 - (void)inspectorViewController:(InspectorViewController *)controller didSelectAudioSourceIndex:(NSInteger)index;
 - (void)inspectorViewController:(InspectorViewController *)controller didSetDebugOverlay:(BOOL)on;
@@ -26,7 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL systemAudioAvailable;
 @property (nonatomic, copy, nullable) NSString *audioReason;
 
-- (void)setAutoChangeOn:(BOOL)on interval:(double)interval remaining:(double)remaining;
+- (void)setAutoChangeOn:(BOOL)on interval:(double)interval;
+- (void)setBlendPattern:(NSInteger)pattern blendSeconds:(float)seconds hardCutsOn:(BOOL)hardCutsOn;
 - (void)setFrameRate:(float)frameRate;
 - (void)setAudioSourceIndex:(NSInteger)index;
 - (void)setDebugOverlayOn:(BOOL)on;

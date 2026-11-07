@@ -8,6 +8,7 @@
 #ifndef __SYNESTHESIA_VIBE_SYNESTHESIA_VIBE_CONTEXT_H__
 #define __SYNESTHESIA_VIBE_SYNESTHESIA_VIBE_CONTEXT_H__ 1
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <random>
@@ -18,6 +19,7 @@
 
 #include "analysis_settings.h"
 #include "audiobuf.h"
+#include "blend_pattern.h"
 #include "fft.h"
 #include "frame_driver.h"
 #include "frame_inputs.h"
@@ -54,6 +56,9 @@ constexpr float kBeatdropMinPlaybackRate = 0.125f;
 constexpr float kBeatdropMaxPlaybackRate = 8.0f;
 constexpr float kBeatdropDisplayFpsDamping = 0.9f;
 constexpr float kBeatdropDefaultDebugIntervalSeconds = 1.0f;
+constexpr sv_transition_config kBeatdropDefaultTransition = { 2.7f, 16.0f, 10.0f, false, 2.5f, 60.0f };
+constexpr float kBeatdropProgressTimeBetweenPresets = 16.0f;
+constexpr float kBeatdropProgressTimeBetweenPresetsRand = 10.0f;
 
 struct BdGlPipeline;
 
@@ -103,6 +108,16 @@ struct sv_context
     bool resumePending;
     float displayFps;
     float limiterLastTime;
+
+    sv_transition_config transition;
+    int blendPattern;
+    render_core::BlendPatternClock blendPatternClock;
+    sv_preset_request_fn requestFn;
+    void* requestUser;
+    bool requestPending;
+    sv_preset_request_reason requestReason;
+    std::atomic<bool> requestLatched;
+    std::atomic<bool> requestLoadFailed;
 
     sv_debug_fn debugFn;
     void* debugUser;
@@ -198,6 +213,8 @@ void BdCopyString(char* dst, int dstBytes, const char* src);
 void BdSampleContextSources(sv_context* ctx);
 FrameInputs BdMakeFrameInputs(sv_context* ctx);
 void BdDrawRandFrame(sv_context* ctx);
+void BdSignalPresetLoadFailure(sv_context* ctx);
+void BdClearPresetRequestLatch(sv_context* ctx);
 
 static_assert(sizeof(sv_context) > 0, "sv_context must be complete");
 

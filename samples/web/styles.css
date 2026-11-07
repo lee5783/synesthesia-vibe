@@ -634,6 +634,17 @@ main {
     width: 140px;
 }
 
+.range {
+    width: 100%;
+    accent-color: var(--accent-primary);
+}
+
+.range-value {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
 .divider {
     height: 1px;
     background: var(--border-subtle);

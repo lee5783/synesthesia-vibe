@@ -49,8 +49,39 @@ void ComputeCornerShades(const ShowToUserShaderInput& input, float (&shade)[4][3
     }
 }
 
-void ApplyVertexShades(const float (&shade)[4][3], std::vector<render_core::Vertex>& verts)
+uint32_t SampleBlendAlpha(const ShowToUserShaderInput& input, float x, float y)
 {
+    const int gridX = input.blendGridX;
+    const int gridY = input.blendGridY;
+
+    x *= (gridX + 1);
+    y *= (gridY + 1);
+    x = std::max(std::min(x, static_cast<float>(gridX - 1)), 0.0f);
+    y = std::max(std::min(y, static_cast<float>(gridY - 1)), 0.0f);
+
+    const int nx = static_cast<int>(x);
+    const int ny = static_cast<int>(y);
+    const double dx = x - nx;
+    const double dy = y - ny;
+
+    const double alpha00 = (input.blendVerts[(ny) * (gridX + 1) + (nx)].Diffuse >> 24);
+    const double alpha01 = (input.blendVerts[(ny) * (gridX + 1) + (nx + 1)].Diffuse >> 24);
+    const double alpha10 = (input.blendVerts[(ny + 1) * (gridX + 1) + (nx)].Diffuse >> 24);
+    const double alpha11 = (input.blendVerts[(ny + 1) * (gridX + 1) + (nx + 1)].Diffuse >> 24);
+
+    double alpha = alpha00 * (1 - dx) * (1 - dy) +
+                   alpha01 * (dx) * (1 - dy) +
+                   alpha10 * (1 - dx) * (dy) +
+                   alpha11 * (dx) * (dy);
+    alpha /= 255.0f;
+
+    return (static_cast<uint32_t>(static_cast<int>(alpha * 255)) & 0xFFu) << 24;
+}
+
+void ApplyVertexShades(const ShowToUserShaderInput& input, const float (&shade)[4][3], std::vector<render_core::Vertex>& verts)
+{
+    const bool bBlendAlpha = input.alphaBlend && input.blendVerts != nullptr;
+
     for (int j = 0; j < kCompositeGridY; j++)
     {
         for (int i = 0; i < kCompositeGridX; i++)
@@ -70,6 +101,9 @@ void ApplyVertexShades(const float (&shade)[4][3], std::vector<render_core::Vert
             }
 
             vert.Diffuse = PackOpaqueColor01(color);
+
+            if (bBlendAlpha)
+                vert.Diffuse = (vert.Diffuse & 0x00FFFFFFu) | SampleBlendAlpha(input, x, y);
         }
     }
 }
@@ -105,9 +139,14 @@ void ShowToUserShaders(const ShowToUserShaderInput& input, PresetShaderInputs& s
         { 1.0f, 1.0f, 1.0f } };
 
     ComputeCornerShades(input, shade);
-    ApplyVertexShades(shade, grid.Vertices());
+    ApplyVertexShades(input, shade, grid.Vertices());
 
-    SetBlendOpaque();
+    if (!input.alphaBlend)
+        SetBlendOpaque();
+    else if (input.flipAlpha)
+        SetBlendAlphaFlippedOverOpaque();
+    else
+        SetBlendAlphaOverOpaque();
 
     PresetFrameInput frame = input.frame;
     frame.mainTexture = source.Id();
@@ -119,6 +158,9 @@ void ShowToUserShaders(const ShowToUserShaderInput& input, PresetShaderInputs& s
     mesh.DrawIndexedTriangles(grid.IndexCount());
 
     shaderInputs.Restore();
+
+    if (input.alphaBlend)
+        SetBlendOpaque();
 }
 
 }

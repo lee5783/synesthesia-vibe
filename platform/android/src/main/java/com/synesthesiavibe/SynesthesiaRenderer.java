@@ -43,6 +43,12 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     private volatile float debugInterval = DEFAULT_DEBUG_INTERVAL;
     private SynesthesiaContext.DebugListener appliedDebugListener;
     private float appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
+    private volatile TransitionConfiguration transitionConfiguration;
+    private TransitionConfiguration appliedTransitionConfiguration;
+    private volatile int blendPattern = BlendPattern.RANDOM;
+    private int appliedBlendPattern = BlendPattern.RANDOM;
+    private volatile SynesthesiaContext.PresetRequestListener presetRequestListener;
+    private SynesthesiaContext.PresetRequestListener appliedPresetRequestListener;
     private long lastFrameNanos;
     private long nextDeadlineNanos;
 
@@ -80,6 +86,11 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
             appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
             applyDebug(created);
 
+            appliedTransitionConfiguration = null;
+            appliedBlendPattern = BlendPattern.RANDOM;
+            appliedPresetRequestListener = null;
+            applyTransition(created);
+
             lastFrameNanos = 0;
             nextDeadlineNanos = 0;
             context = created;
@@ -109,6 +120,7 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
         applyPlaybackRate(current);
         applyDebug(current);
+        applyTransition(current);
 
         if (frameIntervalNanos > 0 && !paused)
             waitForDeadline();
@@ -144,6 +156,30 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     public void setDebugInterval(float seconds) {
         debugInterval = seconds;
+    }
+
+    public TransitionConfiguration getTransitionConfiguration() {
+        return transitionConfiguration;
+    }
+
+    public void setTransitionConfiguration(TransitionConfiguration configuration) {
+        transitionConfiguration = configuration;
+    }
+
+    public int getBlendPattern() {
+        return blendPattern;
+    }
+
+    public void setBlendPattern(int pattern) {
+        blendPattern = pattern;
+    }
+
+    public SynesthesiaContext.PresetRequestListener getPresetRequestListener() {
+        return presetRequestListener;
+    }
+
+    public void setPresetRequestListener(SynesthesiaContext.PresetRequestListener listener) {
+        presetRequestListener = listener;
     }
 
     public void pause() {
@@ -203,6 +239,27 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         if (listener != appliedDebugListener) {
             appliedDebugListener = listener;
             current.setDebugListener(listener);
+        }
+    }
+
+    private void applyTransition(SynesthesiaContext current) {
+        TransitionConfiguration configuration = transitionConfiguration;
+        int pattern = blendPattern;
+        SynesthesiaContext.PresetRequestListener listener = presetRequestListener;
+
+        if (configuration != appliedTransitionConfiguration) {
+            appliedTransitionConfiguration = configuration;
+            current.setTransitionConfiguration(configuration);
+        }
+
+        if (pattern != appliedBlendPattern) {
+            appliedBlendPattern = pattern;
+            current.setBlendPattern(pattern);
+        }
+
+        if (listener != appliedPresetRequestListener) {
+            appliedPresetRequestListener = listener;
+            current.setPresetRequestListener(listener);
         }
     }
 

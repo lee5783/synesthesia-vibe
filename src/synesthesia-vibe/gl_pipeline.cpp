@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#include <utility>
 
 #include "context.h"
 #include "gl_error.h"
@@ -189,6 +190,12 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->gl->glErrorCount = 0;
     ctx->gl->warpShaderActive = false;
     ctx->gl->compShaderActive = false;
+    ctx->gl->oldWarpShaderActive = false;
+    ctx->gl->oldCompShaderActive = false;
+    ctx->gl->warpInputs = &ctx->gl->warpInputSlots[0];
+    ctx->gl->compInputs = &ctx->gl->compInputSlots[0];
+    ctx->gl->oldWarpInputs = &ctx->gl->warpInputSlots[1];
+    ctx->gl->oldCompInputs = &ctx->gl->compInputSlots[1];
     ctx->gl->resourcesBuilt = false;
     ctx->gl->ready = false;
     ctx->gl->limiterEnabled = ctx->config.max_luminance > 0.0f || ctx->config.flash_limit > 0.0f;
@@ -290,6 +297,8 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
         {
             ctx->gl->warpShaderActive = false;
             ctx->gl->compShaderActive = false;
+            ctx->gl->oldWarpShaderActive = false;
+            ctx->gl->oldCompShaderActive = false;
         }
 
         if (fallbackReason != nullptr)
@@ -299,6 +308,11 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
     }
 
     BdGlPipeline* gl = ctx->gl;
+
+    std::swap(gl->warpInputs, gl->oldWarpInputs);
+    std::swap(gl->compInputs, gl->oldCompInputs);
+    gl->oldWarpShaderActive = gl->warpShaderActive;
+    gl->oldCompShaderActive = gl->compShaderActive;
 
     gl->presetCache.BeginGeneration();
     gl->disk.BeginGeneration();
@@ -311,14 +325,14 @@ std::string BdGlPreparePresetShaders(sv_context* ctx, const std::string& presetD
 
     if (ctx->state->m_nWarpPSVersion > 0)
         errors += BdGlBindStage(ctx, render_gl::PresetShaderStage::Warp, "warp", ctx->state->m_szWarpShadersText,
-            preparedWarp, gl->warpInputs, gl->warpShaderActive, warpFallback);
+            preparedWarp, *gl->warpInputs, gl->warpShaderActive, warpFallback);
     else
         gl->warpShaderActive = false;
 
     if (ctx->state->m_nCompPSVersion > 0)
     {
         const std::string compErrors = BdGlBindStage(ctx, render_gl::PresetShaderStage::Composite, "comp",
-            ctx->state->m_szCompShadersText, preparedComp, gl->compInputs, gl->compShaderActive, compFallback);
+            ctx->state->m_szCompShadersText, preparedComp, *gl->compInputs, gl->compShaderActive, compFallback);
 
         if (!errors.empty() && !compErrors.empty())
             errors += "; ";
