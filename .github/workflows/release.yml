@@ -25,6 +25,8 @@ env:
   ANDROID_NDK_VERSION: 28.2.13676358
   CMAKE_VERSION: 4.4.3
   CMAKE_LINUX_SHA256: d6c83076c575bc00b823522ac974bda66d0af05d6ddc30e739c12385cf32c6cc
+  NINJA_VERSION: 1.13.2
+  NINJA_LINUX_SHA256: 5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6
   APPLE_TRIPLETS: arm64-ios arm64-ios-simulator x64-ios arm64-osx x64-osx
   ANDROID_TRIPLETS: arm64-android x64-android
   WEB_TRIPLETS: wasm32-emscripten
@@ -202,8 +204,11 @@ jobs:
       - name: Install CMake and Ninja
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ninja-build
+          NINJA_DIR="$RUNNER_TEMP/ninja-$NINJA_VERSION"
+          curl -fsSL -o "$RUNNER_TEMP/ninja-linux.zip" "https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-linux.zip"
+          echo "$NINJA_LINUX_SHA256  $RUNNER_TEMP/ninja-linux.zip" | sha256sum -c -
+          rm -rf "$NINJA_DIR"
+          unzip -q "$RUNNER_TEMP/ninja-linux.zip" -d "$NINJA_DIR"
           ARCHIVE="cmake-$CMAKE_VERSION-linux-x86_64.tar.gz"
           curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/$ARCHIVE"
           echo "$CMAKE_LINUX_SHA256  $RUNNER_TEMP/$ARCHIVE" | sha256sum -c -
@@ -211,7 +216,7 @@ jobs:
           rm -rf "$CMAKE_DIR"
           mkdir -p "$CMAKE_DIR"
           tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$CMAKE_DIR" --strip-components=1
-          ln -sf "$(command -v ninja)" "$CMAKE_DIR/bin/ninja"
+          ln -sf "$NINJA_DIR/ninja" "$CMAKE_DIR/bin/ninja"
           "$CMAKE_DIR/bin/cmake" --version
           echo "CMAKE_DIR=$CMAKE_DIR" >> "$GITHUB_ENV"
 
@@ -279,8 +284,11 @@ jobs:
       - name: Install CMake and Ninja
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ninja-build
+          NINJA_DIR="$RUNNER_TEMP/ninja-$NINJA_VERSION"
+          curl -fsSL -o "$RUNNER_TEMP/ninja-linux.zip" "https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-linux.zip"
+          echo "$NINJA_LINUX_SHA256  $RUNNER_TEMP/ninja-linux.zip" | sha256sum -c -
+          rm -rf "$NINJA_DIR"
+          unzip -q "$RUNNER_TEMP/ninja-linux.zip" -d "$NINJA_DIR"
           ARCHIVE="cmake-$CMAKE_VERSION-linux-x86_64.tar.gz"
           curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/$ARCHIVE"
           echo "$CMAKE_LINUX_SHA256  $RUNNER_TEMP/$ARCHIVE" | sha256sum -c -
@@ -288,7 +296,7 @@ jobs:
           rm -rf "$CMAKE_DIR"
           mkdir -p "$CMAKE_DIR"
           tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$CMAKE_DIR" --strip-components=1
-          ln -sf "$(command -v ninja)" "$CMAKE_DIR/bin/ninja"
+          ln -sf "$NINJA_DIR/ninja" "$CMAKE_DIR/bin/ninja"
           "$CMAKE_DIR/bin/cmake" --version
           echo "CMAKE_DIR=$CMAKE_DIR" >> "$GITHUB_ENV"
 
@@ -368,12 +376,18 @@ jobs:
           submodules: false
           persist-credentials: false
 
-      - name: Install Ninja and zip
+      - name: Install Ninja
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ninja-build zip
-          ninja --version
+          NINJA_DIR="$RUNNER_TEMP/ninja-$NINJA_VERSION"
+          curl -fsSL -o "$RUNNER_TEMP/ninja-linux.zip" "https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-linux.zip"
+          echo "$NINJA_LINUX_SHA256  $RUNNER_TEMP/ninja-linux.zip" | sha256sum -c -
+          rm -rf "$NINJA_DIR"
+          unzip -q "$RUNNER_TEMP/ninja-linux.zip" -d "$NINJA_DIR"
+          echo "$NINJA_DIR" >> "$GITHUB_PATH"
+          "$NINJA_DIR/ninja" --version
+          command -v zip > /dev/null || { sudo apt-get update -qq; sudo apt-get install -y -qq zip; }
+          zip -v | head -2
           (cd /tmp && env -u PWD cmake --version)
 
       - name: Install emsdk
