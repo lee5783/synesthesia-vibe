@@ -5,13 +5,14 @@
 //  Created by lee5783 on 2026-10-12.
 //
 
-import { CaptureSession, ResourceLoader, SynesthesiaError, loadSynesthesiaModule } from "synesthesia-vibe";
+import { CaptureSession, ResourceLoader, SynesthesiaContext, SynesthesiaError, loadSynesthesiaModule } from "synesthesia-vibe";
 
 const CAPTURE_MANIFEST_URL = "resources/capture-manifest.json";
 const CAPTURE_SET_URL = "resources/capture-set.json";
 const OUTPUT_ROOT = "/synesthesiavibe/capture";
 const DONE_MARKER = "done";
 const NO_WAV = "none";
+const DEFAULT_BLEND_SECONDS = 2.7;
 const STANDARD_FRAMES = Object.freeze([0, 30, 60, 150, 300, 450, 599]);
 
 export async function runCapture(parameters, elements) {
@@ -30,14 +31,16 @@ export async function runCapture(parameters, elements) {
         const loaded = await new ResourceLoader(module).load(CAPTURE_MANIFEST_URL);
         const preset = await resolvePreset(key, loaded.presets);
         const wav = resolveWav(parameters.get("wav"), loaded.audio);
+        const blend = await resolveBlend(parameters, loaded.presets);
 
-        console.info("CAPTURE START preset=" + key + " frames=" + frames.join(",") + " out=" + out);
+        console.info("CAPTURE START preset=" + key + " frames=" + frames.join(",") + " out=" + out
+            + (blend === null ? "" : " blend=" + parameters.get("blend") + " blendAt=" + blend.atFrame + " blendSeconds=" + blend.seconds + " pattern=" + blend.pattern));
         report(elements, "Capturing " + frames.length + " frames of " + key + "…");
         const canvas = document.createElement("canvas");
         canvas.width = CaptureSession.CAPTURE_WIDTH;
         canvas.height = CaptureSession.CAPTURE_HEIGHT;
         const session = new CaptureSession(module, canvas);
-        await session.run({ preset, wav, frames, outDir: OUTPUT_ROOT + "/" + out });
+        await session.run({ preset, wav, frames, outDir: OUTPUT_ROOT + "/" + out, blend });
         const files = session.files();
 
         for (const file of files) {
@@ -67,6 +70,42 @@ export async function runCapture(parameters, elements) {
     }
 
     return line;
+}
+
+async function resolveBlend(parameters, presets) {
+    const key = (parameters.get("blend") ?? "").trim();
+
+    if (key === "")
+        return null;
+
+    const atFrame = parseNonNegative(parameters.get("blendAt"), "blendAt", 0, true);
+    const seconds = parseNonNegative(parameters.get("blendSeconds"), "blendSeconds", DEFAULT_BLEND_SECONDS, false);
+    const pattern = parsePattern(parameters.get("pattern"));
+    return { preset: await resolvePreset(key, presets), atFrame, seconds, pattern };
+}
+
+function parseNonNegative(value, name, fallback, integer) {
+    if (value === null || value.trim() === "")
+        return fallback;
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number) || number < 0 || (integer && !Number.isInteger(number)))
+        throw new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "invalid " + name + " " + value);
+
+    return number;
+}
+
+function parsePattern(value) {
+    if (value === null || value.trim() === "")
+        return SynesthesiaContext.BLEND_PATTERN_RANDOM;
+
+    const number = Number(value);
+
+    if (!Number.isInteger(number) || number < SynesthesiaContext.BLEND_PATTERN_RANDOM || number >= SynesthesiaContext.BLEND_PATTERN_NAMES.length)
+        throw new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "invalid pattern " + value);
+
+    return number;
 }
 
 function parseFrames(list) {

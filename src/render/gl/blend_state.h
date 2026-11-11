@@ -33,6 +33,12 @@ void SetBlendAlpha();
 
 void SetBlendAlphaFlipped();
 
+void SetBlendAlphaOverOpaque();
+
+void SetBlendAlphaFlippedOverOpaque();
+
+void SetBlendPass(bool alphaBlend, bool flipAlpha);
+
 void SetBlendAdditive();
 
 void SetDefaultDrawState();

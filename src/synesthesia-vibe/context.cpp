@@ -335,6 +335,16 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->displayFps = ctx->fpsHint;
     ctx->limiterLastTime = 0.0f;
 
+    ctx->transition = kBeatdropDefaultTransition;
+    ctx->blendPattern = SV_BLEND_PATTERN_RANDOM;
+    ctx->blendPatternClock = render_core::BlendPatternClock();
+    ctx->requestFn = nullptr;
+    ctx->requestUser = nullptr;
+    ctx->requestPending = false;
+    ctx->requestReason = SV_PRESET_REQUEST_TIMER;
+    ctx->requestLatched.store(false);
+    ctx->requestLoadFailed.store(false);
+
     ctx->debugFn = nullptr;
     ctx->debugUser = nullptr;
     ctx->debugInterval = kBeatdropDefaultDebugIntervalSeconds;
@@ -433,7 +443,19 @@ extern "C" void sv_resize(sv_context* ctx, int width, int height)
     ctx->texsizeY = BdDeriveTexsize(ctx->texsizeModeY, height, ctx->texsizeY);
 
     BdUpdateAspect(ctx);
+
+    const std::vector<render_core::VertInfo> previousVertInfo = ctx->meshVertInfo;
     BdBuildMeshGrid(ctx);
+
+    if (previousVertInfo.size() == ctx->meshVertInfo.size())
+    {
+        for (size_t i = 0; i < previousVertInfo.size(); i++)
+        {
+            ctx->meshVertInfo[i].a = previousVertInfo[i].a;
+            ctx->meshVertInfo[i].c = previousVertInfo[i].c;
+        }
+    }
+
     BdGlPipelineResize(ctx);
 }
 
@@ -466,6 +488,71 @@ extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
         rate = 1.0f;
 
     ctx->playbackRate = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
+}
+
+extern "C" void sv_set_transition_config(sv_context* ctx, const sv_transition_config* config)
+{
+    if (ctx == nullptr)
+        return;
+
+    if (config == nullptr)
+    {
+        ctx->transition = kBeatdropDefaultTransition;
+        return;
+    }
+
+    sv_transition_config sanitized = *config;
+
+    if (!std::isfinite(sanitized.soft_cut_seconds))
+        sanitized.soft_cut_seconds = kBeatdropDefaultTransition.soft_cut_seconds;
+    sanitized.soft_cut_seconds = std::max(sanitized.soft_cut_seconds, 0.0f);
+
+    if (!std::isfinite(sanitized.preset_duration))
+        sanitized.preset_duration = kBeatdropDefaultTransition.preset_duration;
+
+    if (!std::isfinite(sanitized.preset_duration_rand))
+        sanitized.preset_duration_rand = kBeatdropDefaultTransition.preset_duration_rand;
+    sanitized.preset_duration_rand = std::max(sanitized.preset_duration_rand, 0.0f);
+
+    if (!std::isfinite(sanitized.hard_cut_loudness) || sanitized.hard_cut_loudness <= 0.0f)
+        sanitized.hard_cut_loudness = kBeatdropDefaultTransition.hard_cut_loudness;
+
+    if (!std::isfinite(sanitized.hard_cut_halflife) || sanitized.hard_cut_halflife <= 0.0f)
+        sanitized.hard_cut_halflife = kBeatdropDefaultTransition.hard_cut_halflife;
+
+    ctx->transition = sanitized;
+}
+
+extern "C" void sv_set_blend_pattern(sv_context* ctx, int pattern)
+{
+    if (ctx == nullptr)
+        return;
+
+    ctx->blendPattern = (pattern >= 0 && pattern < SV_BLEND_PATTERN_COUNT) ? pattern : SV_BLEND_PATTERN_RANDOM;
+}
+
+extern "C" void sv_set_preset_request_callback(sv_context* ctx, sv_preset_request_fn fn, void* user)
+{
+    if (ctx == nullptr)
+        return;
+
+    ctx->requestFn = fn;
+    ctx->requestUser = user;
+    ctx->requestPending = false;
+    ctx->requestLatched.store(false);
+    ctx->requestLoadFailed.store(false);
+}
+
+void BdSignalPresetLoadFailure(sv_context* ctx)
+{
+    if (ctx != nullptr && ctx->requestLatched.load())
+        ctx->requestLoadFailed.store(true);
+}
+
+void BdClearPresetRequestLatch(sv_context* ctx)
+{
+    ctx->requestLatched.store(false);
+    ctx->requestLoadFailed.store(false);
 }
 
 extern "C" void sv_set_debug_callback(sv_context* ctx, sv_debug_fn fn, void* user)

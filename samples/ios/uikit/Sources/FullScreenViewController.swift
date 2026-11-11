@@ -72,7 +72,8 @@ final class FullScreenViewController: UIViewController {
                 cap: session.capLabel,
                 gl: session.glVersion,
                 audio: session.audioLabel,
-                auto: session.autoText
+                auto: session.autoText,
+                transition: session.transitionLabel
             )
             return
         }
@@ -82,6 +83,7 @@ final class FullScreenViewController: UIViewController {
             gl: session.glVersion,
             audio: session.audioLabel,
             auto: session.autoText,
+            transition: session.transitionLabel,
             renderScale: stageView.visualizerView.renderScale
         )
     }

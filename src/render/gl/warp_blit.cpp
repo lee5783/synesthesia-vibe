@@ -37,7 +37,7 @@ void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program,
     source.ColorTexture().SetWrapRepeat(input.wrap);
     dest.Bind();
 
-    SetBlendOpaque();
+    SetBlendPass(input.alphaBlend, input.flipAlpha);
 
     program.Bind();
     program.SetUvOffset(0.0f, 0.0f);
@@ -48,6 +48,9 @@ void WarpedBlitNoShaders(const WarpBlitInput& input, const DrawProgram& program,
     mesh.DrawIndexedTriangles(input.indexCount);
 
     program.SetUvOffset(0.0f, 0.0f);
+
+    if (input.alphaBlend)
+        SetBlendOpaque();
 }
 
 }

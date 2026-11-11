@@ -6,11 +6,15 @@
 //
 
 import SwiftUI
+import SynesthesiaVibe
 
 struct InspectorView: View {
 
     @Binding var isAutoChangeOn: Bool
     @Binding var autoChangeInterval: Double
+    @Binding var blendPattern: Int
+    @Binding var blendDuration: Float
+    @Binding var hardCutsOn: Bool
     @Binding var audioSource: AudioSource
     @Binding var frameRate: Float
     @Binding var debugOverlayOn: Bool
@@ -21,6 +25,7 @@ struct InspectorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 playlistGroup
+                transitionGroup
                 audioGroup
                 playbackGroup
                 developerGroup
@@ -50,7 +55,9 @@ struct InspectorView: View {
                         .foregroundStyle(isAutoChangeOn ? Color.svTextPrimary : Color.svTextDisabled)
                     Spacer(minLength: 8)
                     Picker("Every", selection: $autoChangeInterval) {
-                        Text("30 seconds").tag(30.0)
+                        ForEach(VisualizerModel.autoIntervals, id: \.self) { interval in
+                            Text(interval >= 60 ? "\(Int(interval / 60)) minute" : "\(Int(interval)) seconds").tag(interval)
+                        }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
@@ -59,7 +66,58 @@ struct InspectorView: View {
                     .accessibilityIdentifier("auto-change-interval")
                 }
             }
-            footer("Click a preset in the sidebar to play it.")
+            footer("The engine moves to the next preset when the interval ends. Click a preset in the sidebar to play it.")
+        }
+    }
+
+    private var transitionGroup: some View {
+        group("Transitions") {
+            card {
+                row {
+                    Text("Transition")
+                        .foregroundStyle(Color.svTextPrimary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    Spacer(minLength: 8)
+                    Picker("Transition", selection: $blendPattern) {
+                        ForEach(VisualizerModel.blendPatternChoices, id: \.self) { pattern in
+                            Text(SVBlendPattern.name(for: pattern)).tag(pattern)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 150)
+                    .accessibilityIdentifier("transition-picker")
+                }
+                divider
+                row {
+                    Text("Blend duration")
+                        .foregroundStyle(Color.svTextPrimary)
+                    Spacer(minLength: 8)
+                    Picker("Blend duration", selection: $blendDuration) {
+                        ForEach(VisualizerModel.blendDurations, id: \.self) { seconds in
+                            Text(seconds <= 0 ? "Instant" : String(format: "%g s", seconds)).tag(seconds)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .accessibilityIdentifier("blend-duration-picker")
+                }
+                divider
+                row {
+                    Text("Hard cuts")
+                        .foregroundStyle(Color.svTextPrimary)
+                    Spacer(minLength: 8)
+                    Toggle("", isOn: $hardCutsOn)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(Color.svAccentPrimary)
+                        .accessibilityLabel("Hard cuts")
+                        .accessibilityIdentifier("hard-cuts-toggle")
+                }
+            }
+            footer("A hard cut loads the next preset with no blend.")
         }
     }
 
@@ -103,19 +161,6 @@ struct InspectorView: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                     .accessibilityIdentifier("frame-rate-picker")
-                }
-                divider
-                row {
-                    Text("Transition")
-                        .foregroundStyle(Color.svTextPrimary)
-                    Spacer(minLength: 8)
-                    Picker("Transition", selection: .constant("Blend")) {
-                        Text("Blend").tag("Blend")
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                    .accessibilityIdentifier("transition-picker")
                 }
             }
             footer("Frame rate applies live through preferredFramesPerSecond.")

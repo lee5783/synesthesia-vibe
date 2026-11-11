@@ -200,8 +200,26 @@
                 <div class="group">
                     <label class="control-label" for="transition">Transition</label>
                     <select id="transition" class="select">
-                        <option value="blend">Blend</option>
+                        <option value="-1" selected>Random</option>
                     </select>
+                </div>
+
+                <div class="group">
+                    <div class="row-control">
+                        <label class="control-label" for="blend-seconds">Blend duration</label>
+                        <span id="blend-value" class="range-value">2.0 s</span>
+                    </div>
+                    <input id="blend-seconds" class="range" type="range" min="0" max="10" step="0.5" value="2">
+                </div>
+
+                <div class="row-control">
+                    <span class="control-text" id="hard-cuts-label">
+                        <span class="control-title">Hard cuts</span>
+                        <span class="control-hint">Jumps to the next preset on loud beats, with no blend</span>
+                    </span>
+                    <button id="hard-cuts" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="hard-cuts-label">
+                        <span class="knob" aria-hidden="true"></span>
+                    </button>
                 </div>
 
                 <div class="divider"></div>

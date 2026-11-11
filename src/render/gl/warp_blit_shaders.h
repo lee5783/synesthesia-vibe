@@ -25,6 +25,8 @@ struct WarpShaderBlitInput
     int gridX;
     int gridY;
     int indexCount;
+    bool alphaBlend;
+    bool flipAlpha;
     PresetFrameInput frame;
 };
 

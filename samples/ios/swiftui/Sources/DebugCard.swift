@@ -34,7 +34,7 @@ struct DebugCard: View {
                 row("size", sizeText)
                 row("gl", store.glVersion.isEmpty ? "--" : store.glVersion)
                 row("audio", store.audioLabel)
-                row("rate", "1.0× · \(VisualizerStore.transitionName)")
+                row("rate", "1.0× · \(store.transitionLabel)")
                 row("auto", store.autoText)
             }
             if let error = errorText {

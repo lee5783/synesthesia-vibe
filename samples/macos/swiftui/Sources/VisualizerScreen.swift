@@ -31,6 +31,9 @@ struct VisualizerScreen: View {
                 .inspector(isPresented: $isInspectorPresented) {
                     InspectorView(isAutoChangeOn: $model.isAutoChangeOn,
                                   autoChangeInterval: $model.autoChangeInterval,
+                                  blendPattern: $model.blendPattern,
+                                  blendDuration: $model.blendDuration,
+                                  hardCutsOn: $model.hardCutsOn,
                                   audioSource: audioSourceBinding,
                                   frameRate: $model.frameRate,
                                   debugOverlayOn: $model.debugOverlayOn,
@@ -177,6 +180,7 @@ private struct DebugOverlayHost: View {
                          glVersion: model.glVersion,
                          renderScale: model.renderScale,
                          autoText: model.autoText,
+                         transitionText: model.transitionText,
                          levels: player.levels)
     }
 }

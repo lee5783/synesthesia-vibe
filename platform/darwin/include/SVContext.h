@@ -9,6 +9,7 @@
 #import <stdint.h>
 
 #import "SVContextConfiguration.h"
+#import "SVTransitionConfiguration.h"
 #import "SVPreparedPreset.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -52,6 +53,9 @@ typedef struct SVPresetInfo {
 @property (nonatomic, copy, nullable) void (^debugInfoHandler)(NSDictionary<NSString *, id> *info);
 @property (nonatomic, assign) float debugInterval;
 @property (nonatomic, assign) BOOL debugEnabled;
+@property (nonatomic, copy) SVTransitionConfiguration *transitionConfiguration;
+@property (nonatomic, assign) NSInteger blendPattern;
+@property (nonatomic, copy, nullable) void (^presetRequestHandler)(SVPresetRequest *request);
 
 - (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;

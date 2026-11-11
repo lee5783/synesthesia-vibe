@@ -14,7 +14,7 @@
 static const NSTimeInterval VisualizerMaximumFeedSeconds = 0.25;
 static const NSTimeInterval VisualizerFrameRateLogInterval = 1.0;
 static const NSTimeInterval VisualizerLaunchSnapshotDelay = 3.0;
-static const float VisualizerPresetBlendSeconds = 2.0f;
+static const float VisualizerDefaultBlendSeconds = 2.0f;
 static const double VisualizerLiveInputSampleRate = 44100.0;
 static const NSUInteger VisualizerPrepareThreadStackBytes = 4 * 1024 * 1024;
 
@@ -168,6 +168,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 @property (nonatomic, copy, readwrite, nullable) NSURL *wavURL;
 @property (nonatomic, assign, readwrite) VisualizerAudioSource audioSource;
 @property (nonatomic, copy, nullable) NSURL *pendingPresetURL;
+@property (nonatomic, assign) float pendingBlendSeconds;
 @property (nonatomic, strong, nullable) SVPreparedPreset *preparedPreset;
 @property (nonatomic, strong, nullable) NSError *preparedPresetError;
 @property (nonatomic, assign) NSUInteger presetRequestSerial;
@@ -214,6 +215,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
     visualizerView.renderScale = VisualizerLaunchRenderScale(arguments);
     visualizerView.playbackRate = VisualizerLaunchFloat(arguments, @"--playback-rate", 1.0f);
     visualizerView.delegate = self;
+    self.blendSeconds = VisualizerDefaultBlendSeconds;
     self.visualizerView = visualizerView;
     self.audioSource = VisualizerAudioSourceWav;
     self.view = visualizerView;
@@ -297,6 +299,37 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
     };
 }
 
+- (SVTransitionConfiguration *)transitionConfiguration
+{
+    return self.visualizerView.transitionConfiguration;
+}
+
+- (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
+{
+    self.visualizerView.transitionConfiguration = transitionConfiguration;
+}
+
+- (NSInteger)blendPattern
+{
+    return self.visualizerView.blendPattern;
+}
+
+- (void)setBlendPattern:(NSInteger)blendPattern
+{
+    VisualizerLog([NSString stringWithFormat:@"blend pattern=%@", SVBlendPatternName(blendPattern)]);
+    self.visualizerView.blendPattern = blendPattern;
+}
+
+- (void (^)(SVPresetRequest *))presetRequestHandler
+{
+    return self.visualizerView.presetRequestHandler;
+}
+
+- (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
+{
+    self.visualizerView.presetRequestHandler = presetRequestHandler;
+}
+
 - (CGFloat)renderScale
 {
     return self.visualizerView.renderScale;
@@ -374,9 +407,15 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 
 - (void)loadPresetAtURL:(NSURL *)url
 {
-    VisualizerLog([NSString stringWithFormat:@"preset requested \"%@\"", url.lastPathComponent]);
+    [self loadPresetAtURL:url blendSeconds:self.blendSeconds];
+}
+
+- (void)loadPresetAtURL:(NSURL *)url blendSeconds:(float)blendSeconds
+{
+    VisualizerLog([NSString stringWithFormat:@"preset requested \"%@\" blend=%g", url.lastPathComponent, blendSeconds]);
     self.presetRequestSerial += 1;
     self.pendingPresetURL = url;
+    self.pendingBlendSeconds = blendSeconds;
     self.preparedPreset = nil;
     self.preparedPresetError = nil;
     self.presetPrepareStarted = NO;
@@ -503,7 +542,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
     self.preparedPreset = nil;
     self.preparedPresetError = nil;
     self.presetPrepareStarted = NO;
-    float blendSeconds = self.presetURL == nil ? 0.0f : VisualizerPresetBlendSeconds;
+    float blendSeconds = self.presetURL == nil ? 0.0f : self.pendingBlendSeconds;
     NSTimeInterval start = NSProcessInfo.processInfo.systemUptime;
     if (prepared == nil || ![context commitPreparedPreset:prepared blendSeconds:blendSeconds error:&error]) {
         VisualizerLog([NSString stringWithFormat:@"preset load failed \"%@\": %@", url.lastPathComponent, error.localizedDescription]);

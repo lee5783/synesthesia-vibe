@@ -18,6 +18,7 @@ const MIN_MAX_FPS = 1;
 const DEADLINE_TOLERANCE = 0.2;
 const DEFAULT_PLAYBACK_RATE = 1;
 const DEFAULT_DEBUG_INTERVAL = 1;
+const DEFAULT_BLEND_PATTERN = SynesthesiaContext.BLEND_PATTERN_RANDOM;
 
 export class SynesthesiaCanvas {
 
@@ -40,6 +41,9 @@ export class SynesthesiaCanvas {
     #playbackRate = DEFAULT_PLAYBACK_RATE;
     #onDebugInfo = null;
     #debugInterval = null;
+    #transitionConfig = null;
+    #blendPattern = DEFAULT_BLEND_PATTERN;
+    #onPresetRequest = null;
     #hidden = false;
     #lost = false;
     #closed = false;
@@ -126,6 +130,42 @@ export class SynesthesiaCanvas {
             this.#context.setDebugInterval(seconds);
     }
 
+    get transitionConfig() {
+        return { ...SynesthesiaContext.DEFAULT_TRANSITION_CONFIG, ...(this.#transitionConfig ?? {}) };
+    }
+
+    setTransitionConfig(config) {
+        this.#transitionConfig = { ...(this.#transitionConfig ?? {}), ...config };
+
+        if (this.#context !== null)
+            this.#context.setTransitionConfig(this.#transitionConfig);
+    }
+
+    get blendPattern() {
+        return this.#blendPattern;
+    }
+
+    setBlendPattern(pattern) {
+        this.#blendPattern = pattern;
+
+        if (this.#context !== null)
+            this.#context.setBlendPattern(pattern);
+    }
+
+    get onPresetRequest() {
+        return this.#onPresetRequest;
+    }
+
+    set onPresetRequest(handler) {
+        if (handler !== null && handler !== undefined && typeof handler !== "function")
+            throw new TypeError("onPresetRequest takes a function or null");
+
+        this.#onPresetRequest = handler ?? null;
+
+        if (this.#context !== null)
+            this.#context.onPresetRequest = this.#onPresetRequest;
+    }
+
     get isContextLost() {
         return this.#lost;
     }
@@ -200,6 +240,14 @@ export class SynesthesiaCanvas {
 
         if (this.#onDebugInfo !== null)
             context.onDebugInfo = this.#onDebugInfo;
+
+        if (this.#transitionConfig !== null)
+            context.setTransitionConfig(this.#transitionConfig);
+
+        context.setBlendPattern(this.#blendPattern);
+
+        if (this.#onPresetRequest !== null)
+            context.onPresetRequest = this.#onPresetRequest;
 
         this.#context = context;
         this.#lastFrameMs = 0;

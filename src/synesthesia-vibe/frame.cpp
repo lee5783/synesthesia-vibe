@@ -23,13 +23,6 @@ namespace
     constexpr int kBeatdropAlignSamples = 480;
     constexpr int kBeatdropAlignMaxOctaves = 10;
 
-    constexpr float kBeatdropBlendTimeAuto = 2.7f;
-    constexpr float kBeatdropTimeBetweenPresets = 16.0f;
-    constexpr float kBeatdropTimeBetweenPresetsRand = 10.0f;
-    constexpr bool kBeatdropHardCutsDisabled = true;
-    constexpr float kBeatdropHardCutLoudnessThresh = 2.5f;
-    constexpr float kBeatdropHardCutHalflife = 60.0f;
-
     int BdWeekdayFromDate(int year, int month, int day)
     {
         int y = year;
@@ -354,17 +347,19 @@ namespace
         frameDriverInput.fps = fps;
         frameDriverInput.nextPresetTime = ctx->nextPresetTime;
         frameDriverInput.nextPresetTimeRandomDraw = nextPresetTimeRandomDraw;
-        frameDriverInput.timeBetweenPresetsRand = kBeatdropTimeBetweenPresetsRand;
-        frameDriverInput.blendTimeAuto = kBeatdropBlendTimeAuto;
-        frameDriverInput.timeBetweenPresets = kBeatdropTimeBetweenPresets;
+        const sv_transition_config& transition = ctx->transition;
+        const bool timerEnabled = transition.preset_duration > 0.0f;
+        frameDriverInput.timeBetweenPresetsRand = timerEnabled ? transition.preset_duration_rand : kBeatdropProgressTimeBetweenPresetsRand;
+        frameDriverInput.blendTimeAuto = transition.soft_cut_seconds;
+        frameDriverInput.timeBetweenPresets = timerEnabled ? transition.preset_duration : kBeatdropProgressTimeBetweenPresets;
         frameDriverInput.isBlending = ctx->state->m_bBlending;
         frameDriverInput.blendStartTime = ctx->state->m_fBlendStartTime;
         frameDriverInput.blendDuration = ctx->state->m_fBlendDuration;
-        frameDriverInput.hardCutsDisabled = kBeatdropHardCutsDisabled;
+        frameDriverInput.hardCutsDisabled = !transition.hard_cuts_enabled;
         frameDriverInput.presetLockedByUser = false;
         frameDriverInput.presetLockedByCode = false;
-        frameDriverInput.hardCutLoudnessThresh = kBeatdropHardCutLoudnessThresh;
-        frameDriverInput.hardCutHalflife = kBeatdropHardCutHalflife;
+        frameDriverInput.hardCutLoudnessThresh = transition.hard_cut_loudness;
+        frameDriverInput.hardCutHalflife = transition.hard_cut_halflife;
         frameDriverInput.immRel[0] = ctx->mysound.imm_rel[0];
         frameDriverInput.immRel[1] = ctx->mysound.imm_rel[1];
         frameDriverInput.immRel[2] = ctx->mysound.imm_rel[2];
@@ -387,6 +382,20 @@ namespace
         ctx->nextPresetTime = frameDriverOutput.nextPresetTime;
         ctx->nextPresetTimeWasInitialized = frameDriverOutput.nextPresetTimeWasInitialized;
 
+        if (ctx->requestFn != nullptr && !ctx->requestLatched.load())
+        {
+            if (frameDriverOutput.hardCutTriggered)
+            {
+                ctx->requestPending = true;
+                ctx->requestReason = SV_PRESET_REQUEST_HARD_CUT;
+            }
+            else if (frameDriverOutput.presetTimerExpired && timerEnabled && !ctx->requestPending)
+            {
+                ctx->requestPending = true;
+                ctx->requestReason = SV_PRESET_REQUEST_TIMER;
+            }
+        }
+
         BdDrawRandFrame(ctx);
 
         if (frameDriverOutput.blendProgressComputed)
@@ -401,6 +410,38 @@ namespace
             BdMakeFrameInputs(ctx), ctx->snapPoint);
     }
 
+    void BdConsumePresetLoadFailure(sv_context* ctx)
+    {
+        if (!ctx->requestLoadFailed.exchange(false))
+            return;
+
+        if (ctx->requestLatched.exchange(false))
+        {
+            ctx->nextPresetTime = -1.0f;
+            ctx->nextPresetTimeWasInitialized = false;
+        }
+    }
+
+    void BdDeliverPresetRequest(sv_context* ctx)
+    {
+        if (!ctx->requestPending)
+            return;
+
+        ctx->requestPending = false;
+
+        const sv_preset_request_fn fn = ctx->requestFn;
+        void* const user = ctx->requestUser;
+        if (fn == nullptr || ctx->requestLatched.load())
+            return;
+
+        sv_preset_request request;
+        request.reason = ctx->requestReason;
+        request.suggested_blend_seconds = ctx->requestReason == SV_PRESET_REQUEST_HARD_CUT ? 0.0f : ctx->transition.soft_cut_seconds;
+
+        ctx->requestLatched.store(true);
+        fn(ctx, &request, user);
+    }
+
     void BdRenderLegacyFrame(sv_context* ctx, uint32_t target_fbo)
     {
         BdStepSimulationClock(ctx);
@@ -410,6 +451,8 @@ namespace
         BdGlRenderFrame(ctx, target_fbo);
 
         ctx->frame++;
+
+        BdDeliverPresetRequest(ctx);
     }
 
     double BdWallSeconds()
@@ -503,6 +546,8 @@ namespace
         }
 
         BdGlPresentFrame(ctx, target_fbo);
+
+        BdDeliverPresetRequest(ctx);
     }
 
     void BdRestartDebugWindow(sv_context* ctx, double now)
@@ -602,6 +647,8 @@ extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t tar
 
     ctx->lastFrameDt = dt_seconds;
     ctx->lastTargetFbo = target_fbo;
+
+    BdConsumePresetLoadFailure(ctx);
 
     if (ctx->deterministic)
     {

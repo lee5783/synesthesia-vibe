@@ -146,6 +146,49 @@ void        sv_set_debug_callback(sv_context* ctx, sv_debug_fn fn, void* user);
    sv_resume and a gap between sv_render_frame calls longer than both the interval and 1 second also restart the window, without a report. */
 void        sv_set_debug_interval(sv_context* ctx, float seconds);
 
+/* Automatic preset changes. Every field has a default, restored by sv_set_transition_config(ctx, NULL); a non-finite value in a field means that field's default. */
+typedef struct sv_transition_config
+{
+    float soft_cut_seconds;       /* default 2.7; the blend a timer request suggests, and the lead-in added to the timer; < 0 means 0. A negative blend_seconds passed to sv_load_preset* still means a hard cut. */
+    float preset_duration;        /* default 16 seconds between automatic changes; <= 0 never requests a change on the timer (the preset-visible progress variable then keeps using 16 and 10, plus soft_cut_seconds) */
+    float preset_duration_rand;   /* default 10; up to this many extra seconds, drawn per preset; < 0 means 0 */
+    bool  hard_cuts_enabled;      /* default false; true requests a change with SV_PRESET_REQUEST_HARD_CUT when the audio is loud enough */
+    float hard_cut_loudness;      /* default 2.5; the loudness threshold, higher means fewer hard cuts; <= 0 means the default */
+    float hard_cut_halflife;      /* default 60 seconds for the threshold to fall halfway back after a hard cut; <= 0 means the default */
+} sv_transition_config;
+
+/* The values are the default of sv_transition_config; they reproduce the behaviour of a context that never calls sv_set_transition_config. Takes effect on the next simulation step; the timer already armed for the current preset is kept. May be called from inside the preset request callback. Same thread rule as sv_set_playback_rate. */
+void        sv_set_transition_config(sv_context* ctx, const sv_transition_config* config);
+
+/* Blend pattern used when a blend starts: SV_BLEND_PATTERN_RANDOM picks one of the SV_BLEND_PATTERN_COUNT patterns at each blend, 0..SV_BLEND_PATTERN_COUNT-1 selects one in the numbering of the original MilkDrop transition patterns. Default SV_BLEND_PATTERN_RANDOM; any other value clamps to it. Read at the next blend; may be called from inside the preset request callback. */
+enum
+{
+    SV_BLEND_PATTERN_RANDOM = -1,
+    SV_BLEND_PATTERN_COUNT = 19
+};
+void        sv_set_blend_pattern(sv_context* ctx, int pattern);
+
+typedef enum sv_preset_request_reason
+{
+    SV_PRESET_REQUEST_TIMER = 0,
+    SV_PRESET_REQUEST_HARD_CUT = 1
+} sv_preset_request_reason;
+
+/* Borrowed for the duration of the callback. */
+typedef struct sv_preset_request
+{
+    sv_preset_request_reason reason;
+    float suggested_blend_seconds;    /* soft_cut_seconds for a timer request, 0 for a hard cut */
+} sv_preset_request;
+
+/* The engine never picks a preset: it asks the host for one. Runs synchronously inside sv_render_frame on the thread that calls it, at most once per call and after the frame is presented, never while paused. Requests raised by several simulation steps of one call are merged into one, and a hard cut wins over a timer.
+   Once it fires the request stays latched and no further request fires until a load succeeds (sv_load_preset* or sv_commit_preset; a prepare alone does not clear it), or a load, prepare or commit fails, which restarts the timer at the next sv_render_frame and clears the latch. A host that ignores a request therefore is not asked again until it loads one.
+   It may call sv_load_preset*, sv_prepare_preset*, sv_commit_preset, sv_prepared_preset_free, sv_set_transition_config, sv_set_blend_pattern, sv_set_preset_request_callback, sv_set_playback_rate, sv_get_audio_levels, sv_get_preset_info and sv_last_error. It must not call sv_destroy, sv_pause, sv_resume, sv_resize, sv_render_frame or sv_dump_frame_state. */
+typedef void (*sv_preset_request_fn)(sv_context* ctx, const sv_preset_request* request, void* user);
+
+/* Off by default and NULL disables; no request is raised or latched without a callback. Setting it clears a latched request. */
+void        sv_set_preset_request_callback(sv_context* ctx, sv_preset_request_fn fn, void* user);
+
 #ifdef __cplusplus
 }
 #endif

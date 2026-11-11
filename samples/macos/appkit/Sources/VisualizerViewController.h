@@ -45,8 +45,13 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 @property (nonatomic, copy, nullable) void (^debugInfoHandler)(NSDictionary<NSString *, id> *info);
 @property (nonatomic, assign) float debugInterval;
 @property (nonatomic, assign) BOOL debugEnabled;
+@property (nonatomic, copy) SVTransitionConfiguration *transitionConfiguration;
+@property (nonatomic, assign) NSInteger blendPattern;
+@property (nonatomic, assign) float blendSeconds;
+@property (nonatomic, copy, nullable) void (^presetRequestHandler)(SVPresetRequest *request);
 
 - (void)loadPresetAtURL:(NSURL *)url;
+- (void)loadPresetAtURL:(NSURL *)url blendSeconds:(float)blendSeconds;
 - (void)saveSnapshotToURL:(NSURL *)url completion:(void (^)(NSError *_Nullable error))completion;
 - (BOOL)playWavAtURL:(NSURL *)url error:(NSError **)error;
 - (BOOL)selectAudioSource:(VisualizerAudioSource)audioSource error:(NSError **)error;

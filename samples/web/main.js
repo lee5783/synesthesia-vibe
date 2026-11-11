@@ -9,16 +9,16 @@ import { AudioInput, ResourceLoader, SynesthesiaCanvas, SynesthesiaContext, Syne
 import { runCapture } from "./capture.js";
 
 const MANIFEST_URL = "resources/manifest.json";
-const PRESET_BLEND_SECONDS = 2;
+const DEFAULT_BLEND_SECONDS = 2;
+const HARD_CUT_BLEND_SECONDS = 0;
 const METER_FULL_SCALE = 3;
 const DEBUG_INTERVAL_DEFAULT = 1;
-const AUTO_CHANGE_TICK_MS = 1000;
 const DEFAULT_AUTO_INTERVAL_SECONDS = 30;
 const DEFAULT_FPS = 60;
 const DEFAULT_FOLDER_NAME = "mvp-presets";
 const PRESET_EXTENSION = ".milk";
 const TEXTURE_EXTENSIONS = Object.freeze(["jpg", "jpeg", "jfif", "png", "webp", "tga", "bmp", "dib", "gif"]);
-const CONFIGURATION_PARAMETERS = Object.freeze(["maxFps", "maxLuminance", "flashLimit"]);
+const CONFIGURATION_PARAMETERS = Object.freeze(["maxFps", "maxLuminance", "flashLimit", "hardCutLoudness"]);
 const SOURCES = Object.freeze(["none", "wav", "microphone", "system"]);
 const SOURCE_LABELS = Object.freeze({ none: "None", wav: "Bundled WAV", microphone: "Microphone", system: "System sound" });
 const SOURCE_HINTS = Object.freeze({
@@ -60,10 +60,11 @@ class SampleApp {
     #debugInterval = DEBUG_INTERVAL_DEFAULT;
     #autoEnabled = false;
     #autoInterval = DEFAULT_AUTO_INTERVAL_SECONDS;
-    #autoElapsed = 0;
+    #blendSeconds = DEFAULT_BLEND_SECONDS;
+    #blendPattern = SynesthesiaContext.BLEND_PATTERN_RANDOM;
+    #hardCutsEnabled = false;
     #loadSerial = 0;
     #requestedIndex = 0;
-    #autoTimer = 0;
     #glVersion = "";
 
     constructor(elements, configuration, playbackRate = 1, validatePath = null) {
@@ -75,6 +76,7 @@ class SampleApp {
 
     async run() {
         this.#listen();
+        this.#fillPatterns();
         this.#seedFps();
         this.#renderSources();
         this.#updateControls();
@@ -116,6 +118,9 @@ class SampleApp {
         view.setPlaybackRate(this.#playbackRate);
         view.setDebugInterval(this.#debugInterval);
         view.onDebugInfo = this.#debugEnabled ? info => this.#showDebugInfo(info) : null;
+        view.setTransitionConfig(this.#transitionConfig());
+        view.setBlendPattern(this.#blendPattern);
+        view.onPresetRequest = request => this.#handlePresetRequest(request);
 
         if (this.#paused)
             view.pause();
@@ -146,6 +151,9 @@ class SampleApp {
         elements.fullscreenButton.addEventListener("click", () => this.#toggleFullscreen());
         elements.autoChange.addEventListener("click", () => this.#toggleAutoChange());
         elements.interval.addEventListener("change", () => this.#changeAutoInterval(Number(elements.interval.value)));
+        elements.transition.addEventListener("change", () => this.#changeBlendPattern(Number(elements.transition.value)));
+        elements.blendSeconds.addEventListener("input", () => this.#changeBlendSeconds(Number(elements.blendSeconds.value)));
+        elements.hardCuts.addEventListener("click", () => this.#toggleHardCuts());
         elements.fps.addEventListener("change", () => this.#changeFps(Number(elements.fps.value)));
         elements.debugSwitch.addEventListener("click", () => this.#toggleDebug());
         elements.debugButton.addEventListener("click", () => this.#toggleDebug());
@@ -227,7 +235,7 @@ class SampleApp {
                 button.append(icon);
             }
 
-            button.addEventListener("click", () => this.#loadPreset(index, PRESET_BLEND_SECONDS));
+            button.addEventListener("click", () => this.#loadPreset(index, this.#blendSeconds));
             item.append(button);
             return item;
         });
@@ -346,7 +354,7 @@ class SampleApp {
             return;
 
         const count = this.#presets.length;
-        this.#loadPreset((this.#requestedIndex + step + count) % count, PRESET_BLEND_SECONDS);
+        this.#loadPreset((this.#requestedIndex + step + count) % count, this.#blendSeconds);
     }
 
     #logPresetInfo(view) {
@@ -389,7 +397,6 @@ class SampleApp {
         if (serial !== this.#loadSerial)
             return;
 
-        this.#autoElapsed = 0;
         this.#renderPlaylist();
         this.#updateControls();
     }
@@ -439,8 +446,7 @@ class SampleApp {
             this.#busy = false;
         }
 
-        this.#autoElapsed = 0;
-        this.#loadPreset(0, PRESET_BLEND_SECONDS);
+        this.#loadPreset(0, this.#blendSeconds);
     }
 
     #validateRequested() {
@@ -503,48 +509,76 @@ class SampleApp {
         request.catch(error => this.showError(new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "fullscreen unavailable: " + error.message)));
     }
 
+    #fillPatterns() {
+        const options = SynesthesiaContext.BLEND_PATTERN_NAMES.map((name, index) => new Option(name, String(index)));
+        this.#elements.transition.append(...options);
+    }
+
+    #transitionConfig() {
+        const loudness = this.#configuration.hardCutLoudness;
+        const config = {
+            softCutSeconds: this.#blendSeconds,
+            presetDuration: this.#autoEnabled ? this.#autoInterval : 0,
+            presetDurationRand: 0,
+            hardCutsEnabled: this.#hardCutsEnabled
+        };
+
+        if (Number.isFinite(loudness))
+            config.hardCutLoudness = loudness;
+
+        return config;
+    }
+
+    #applyTransitionConfig() {
+        this.#view?.setTransitionConfig(this.#transitionConfig());
+    }
+
+    #handlePresetRequest(request) {
+        const count = this.#presets.length;
+        const hardCut = request.reason === "hardCut";
+        const blendSeconds = hardCut ? HARD_CUT_BLEND_SECONDS : request.suggestedBlendSeconds;
+        console.info("preset request: " + request.reason + " blend=" + blendSeconds.toFixed(1) + " s");
+
+        if (count > 0)
+            this.#loadPreset((this.#requestedIndex + 1) % count, blendSeconds);
+    }
+
     #toggleAutoChange() {
         this.#autoEnabled = !this.#autoEnabled;
-        this.#autoElapsed = 0;
         console.info("auto-change: " + (this.#autoEnabled ? "on" : "off"));
-        this.#applyAutoChange();
+        this.#applyTransitionConfig();
         this.#updateControls();
     }
 
     #changeAutoInterval(seconds) {
         this.#autoInterval = seconds;
-        this.#autoElapsed = 0;
         console.info("auto-change interval: " + seconds + " s");
+        this.#applyTransitionConfig();
         this.#updateControls();
     }
 
-    #applyAutoChange() {
-        if (this.#autoTimer !== 0) {
-            clearInterval(this.#autoTimer);
-            this.#autoTimer = 0;
-        }
-
-        if (this.#autoEnabled)
-            this.#autoTimer = setInterval(() => this.#tickAutoChange(), AUTO_CHANGE_TICK_MS);
+    #changeBlendPattern(pattern) {
+        this.#blendPattern = pattern;
+        this.#view?.setBlendPattern(pattern);
+        console.info("transition: " + this.#patternLabel());
+        this.#updateControls();
     }
 
-    #tickAutoChange() {
-        if (!this.#autoEnabled || this.#paused)
-            return;
-
-        this.#autoElapsed += 1;
-
-        if (this.#autoElapsed >= this.#autoInterval) {
-            const count = this.#presets.length;
-            this.#autoElapsed = 0;
-
-            if (count > 0)
-                this.#loadPreset((this.#requestedIndex + 1) % count, PRESET_BLEND_SECONDS);
-
-            return;
-        }
-
+    #changeBlendSeconds(seconds) {
+        this.#blendSeconds = seconds;
+        this.#applyTransitionConfig();
         this.#updateControls();
+    }
+
+    #toggleHardCuts() {
+        this.#hardCutsEnabled = !this.#hardCutsEnabled;
+        console.info("hard cuts: " + (this.#hardCutsEnabled ? "on" : "off"));
+        this.#applyTransitionConfig();
+        this.#updateControls();
+    }
+
+    #patternLabel() {
+        return this.#blendPattern === SynesthesiaContext.BLEND_PATTERN_RANDOM ? "Random" : SynesthesiaContext.BLEND_PATTERN_NAMES[this.#blendPattern];
     }
 
     async #changeFps(value) {
@@ -607,7 +641,7 @@ class SampleApp {
         elements.debugSize.textContent = info.width + "×" + info.height + " @1.0";
         elements.debugGl.textContent = this.#glString() || "WebGL2";
         elements.debugAudio.textContent = this.#audioLabel();
-        elements.debugRate.textContent = "1.0× · Blend";
+        elements.debugRate.textContent = "1.0× · " + this.#patternLabel();
         elements.debugAuto.textContent = this.#autoText();
         setBar(elements.debugBass, info.bass);
         setBar(elements.debugMid, info.mid);
@@ -628,7 +662,7 @@ class SampleApp {
         elements.debugSize.textContent = "--";
         elements.debugGl.textContent = this.#glString() || "WebGL2";
         elements.debugAudio.textContent = this.#audioLabel();
-        elements.debugRate.textContent = "1.0× · Blend";
+        elements.debugRate.textContent = "1.0× · " + this.#patternLabel();
         elements.debugAuto.textContent = this.#autoText();
         setBar(elements.debugBass, 0);
         setBar(elements.debugMid, 0);
@@ -639,7 +673,7 @@ class SampleApp {
     }
 
     #autoText() {
-        return this.#autoEnabled ? "every " + this.#autoInterval + " s · next " + Math.max(this.#autoInterval - this.#autoElapsed, 0) + " s" : "off";
+        return this.#autoEnabled ? "every " + this.#autoInterval + " s" : "off";
     }
 
     #glString() {
@@ -673,6 +707,9 @@ class SampleApp {
         elements.autoChange.setAttribute("aria-checked", String(this.#autoEnabled));
         elements.interval.disabled = !this.#autoEnabled;
         elements.intervalRow.classList.toggle("disabled", !this.#autoEnabled);
+        elements.hardCuts.classList.toggle("on", this.#hardCutsEnabled);
+        elements.hardCuts.setAttribute("aria-checked", String(this.#hardCutsEnabled));
+        elements.blendValue.textContent = this.#blendSeconds.toFixed(1) + " s";
         elements.debugSwitch.classList.toggle("on", this.#debugEnabled);
         elements.debugSwitch.setAttribute("aria-checked", String(this.#debugEnabled));
         elements.debugButton.classList.toggle("on", this.#debugEnabled);
@@ -699,7 +736,7 @@ class SampleApp {
         const count = this.#presets.length;
         elements.nowPlaying.textContent = this.#presetName;
         const position = count === 0 ? "Preset 0 of 0" : "Preset " + (this.#presetIndex + 1) + " of " + count;
-        const auto = this.#autoEnabled ? "Next preset in " + Math.max(this.#autoInterval - this.#autoElapsed, 0) + " s" : "Auto-change off";
+        const auto = this.#autoEnabled ? "Next preset every " + this.#autoInterval + " s" : "Auto-change off";
         elements.nowSubtitle.textContent = position + " · " + auto;
     }
 }
@@ -765,6 +802,9 @@ function elementsById() {
         intervalRow: byId("interval-row"),
         fps: byId("fps"),
         transition: byId("transition"),
+        blendSeconds: byId("blend-seconds"),
+        blendValue: byId("blend-value"),
+        hardCuts: byId("hard-cuts"),
         debugSwitch: byId("debug-switch"),
         debugButton: byId("debug-button"),
         debugCard: byId("debug-card"),

@@ -44,6 +44,11 @@ struct ShowToUserShaderInput
     int height;
     float time;
     float randStart[4];
+    const render_core::Vertex* blendVerts;
+    int blendGridX;
+    int blendGridY;
+    bool alphaBlend;
+    bool flipAlpha;
     PresetFrameInput frame;
 };
 

@@ -49,8 +49,12 @@ struct BdGlPipeline
     render_gl::RandomTexturePicker picker;
     std::mt19937_64 pickRng;
     render_gl::PresetShaderCache presetCache;
-    render_gl::PresetShaderInputs warpInputs;
-    render_gl::PresetShaderInputs compInputs;
+    render_gl::PresetShaderInputs warpInputSlots[2];
+    render_gl::PresetShaderInputs compInputSlots[2];
+    render_gl::PresetShaderInputs* warpInputs;
+    render_gl::PresetShaderInputs* compInputs;
+    render_gl::PresetShaderInputs* oldWarpInputs;
+    render_gl::PresetShaderInputs* oldCompInputs;
     render_gl::MeshBuffer compMesh;
     render_gl::CompositeGrid compGrid;
     render_gl::LuminanceLimiter limiter;
@@ -67,6 +71,8 @@ struct BdGlPipeline
     int glErrorCount;
     bool warpShaderActive;
     bool compShaderActive;
+    bool oldWarpShaderActive;
+    bool oldCompShaderActive;
     bool resourcesBuilt;
     bool ready;
     bool limiterEnabled;

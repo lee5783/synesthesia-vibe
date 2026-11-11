@@ -9,11 +9,33 @@
 
 #import "SVColorTokens.h"
 
+@import SynesthesiaVibeCore;
+
 static const CGFloat InspectorWidth = 320.0;
 static const CGFloat InspectorCardCornerRadius = 8.0;
 static NSArray<NSNumber *> *InspectorFrameRates(void)
 {
     return @[ @30, @60, @120, @0 ];
+}
+
+static NSArray<NSNumber *> *InspectorAutoIntervals(void)
+{
+    return @[ @10, @15, @30, @60 ];
+}
+
+static NSArray<NSNumber *> *InspectorBlendSeconds(void)
+{
+    return @[ @0.0f, @1.0f, @2.0f, @2.7f, @4.0f, @6.0f, @8.0f, @10.0f ];
+}
+
+static NSString *InspectorBlendSecondsTitle(float seconds)
+{
+    return seconds <= 0.0f ? @"Instant" : [NSString stringWithFormat:@"%g s", seconds];
+}
+
+static NSString *InspectorAutoIntervalTitle(double interval)
+{
+    return interval >= 60.0 ? [NSString stringWithFormat:@"%.0f minute", interval / 60.0] : [NSString stringWithFormat:@"%.0f seconds", interval];
 }
 
 static NSString *InspectorFrameRateTitle(float frameRate)
@@ -44,7 +66,10 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 @interface InspectorViewController ()
 
 @property (nonatomic, strong) NSSwitch *autoChangeSwitch;
-@property (nonatomic, strong) NSTextField *autoChangeIntervalLabel;
+@property (nonatomic, strong) NSPopUpButton *autoChangeIntervalPopUp;
+@property (nonatomic, strong) NSPopUpButton *blendPatternPopUp;
+@property (nonatomic, strong) NSPopUpButton *blendSecondsPopUp;
+@property (nonatomic, strong) NSSwitch *hardCutsSwitch;
 @property (nonatomic, strong) NSTextField *everyLabel;
 @property (nonatomic, strong) NSArray<NSButton *> *sourceButtons;
 @property (nonatomic, strong) NSPopUpButton *frameRatePopUp;
@@ -73,6 +98,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 
     NSStackView *groups = [NSStackView stackViewWithViews:@[
         [self playlistGroup],
+        [self transitionGroup],
         [self audioGroup],
         [self playbackGroup],
         [self developerGroup]
@@ -145,7 +171,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 
     return [self groupWithTitle:@"Playlist"
                            card:[self cardWithContent:rows]
-                         footer:@"Click a preset in the sidebar to play it."];
+                         footer:@"The engine moves to the next preset when the interval ends. Click a preset in the sidebar to play it."];
 }
 
 - (NSView *)autoChangeRow
@@ -168,13 +194,67 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     self.everyLabel = [NSTextField labelWithString:@"Every"];
     self.everyLabel.textColor = SVColorTokens.textDisabled;
 
-    self.autoChangeIntervalLabel = [NSTextField labelWithString:@"30 seconds"];
-    self.autoChangeIntervalLabel.font = [NSFont systemFontOfSize:13.0];
-    self.autoChangeIntervalLabel.textColor = SVColorTokens.textDisabled;
-    self.autoChangeIntervalLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.autoChangeIntervalLabel.accessibilityLabel = @"Change every";
+    self.autoChangeIntervalPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *interval in InspectorAutoIntervals())
+        [self.autoChangeIntervalPopUp addItemWithTitle:InspectorAutoIntervalTitle(interval.doubleValue)];
+    [self.autoChangeIntervalPopUp selectItemAtIndex:2];
+    self.autoChangeIntervalPopUp.enabled = NO;
+    self.autoChangeIntervalPopUp.target = self;
+    self.autoChangeIntervalPopUp.action = @selector(changeAutoChangeInterval:);
+    self.autoChangeIntervalPopUp.accessibilityLabel = @"Change every";
 
-    return [self rowWithLeading:self.everyLabel trailing:self.autoChangeIntervalLabel];
+    return [self rowWithLeading:self.everyLabel trailing:self.autoChangeIntervalPopUp];
+}
+
+- (NSView *)transitionGroup
+{
+    NSTextField *patternLabel = [NSTextField labelWithString:@"Transition"];
+    patternLabel.textColor = SVColorTokens.textPrimary;
+
+    self.blendPatternPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [self.blendPatternPopUp addItemWithTitle:SVBlendPatternName(SVBlendPatternRandom)];
+    for (NSInteger pattern = 0; pattern < SVBlendPatternCount; pattern++)
+        [self.blendPatternPopUp addItemWithTitle:SVBlendPatternName(pattern)];
+    self.blendPatternPopUp.target = self;
+    self.blendPatternPopUp.action = @selector(changeBlendPattern:);
+    self.blendPatternPopUp.accessibilityLabel = @"Transition";
+
+    NSTextField *secondsLabel = [NSTextField labelWithString:@"Blend duration"];
+    secondsLabel.textColor = SVColorTokens.textPrimary;
+
+    self.blendSecondsPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *seconds in InspectorBlendSeconds())
+        [self.blendSecondsPopUp addItemWithTitle:InspectorBlendSecondsTitle(seconds.floatValue)];
+    [self.blendSecondsPopUp selectItemAtIndex:2];
+    self.blendSecondsPopUp.target = self;
+    self.blendSecondsPopUp.action = @selector(changeBlendSeconds:);
+    self.blendSecondsPopUp.accessibilityLabel = @"Blend duration";
+
+    NSTextField *hardCutsLabel = [NSTextField labelWithString:@"Hard cuts"];
+    hardCutsLabel.textColor = SVColorTokens.textPrimary;
+
+    self.hardCutsSwitch = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    self.hardCutsSwitch.target = self;
+    self.hardCutsSwitch.action = @selector(toggleHardCuts:);
+    self.hardCutsSwitch.state = NSControlStateValueOff;
+    self.hardCutsSwitch.accessibilityLabel = @"Hard cuts";
+    [self.hardCutsSwitch setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+    NSStackView *rows = [NSStackView stackViewWithViews:@[
+        [self rowWithLeading:patternLabel trailing:self.blendPatternPopUp],
+        [self dividerView],
+        [self rowWithLeading:secondsLabel trailing:self.blendSecondsPopUp],
+        [self dividerView],
+        [self rowWithLeading:hardCutsLabel trailing:self.hardCutsSwitch]
+    ]];
+    rows.orientation = NSUserInterfaceLayoutOrientationVertical;
+    rows.alignment = NSLayoutAttributeLeading;
+    rows.spacing = 0.0;
+    rows.translatesAutoresizingMaskIntoConstraints = NO;
+
+    return [self groupWithTitle:@"Transitions"
+                           card:[self cardWithContent:rows]
+                         footer:@"A hard cut loads the next preset with no blend."];
 }
 
 - (NSView *)audioGroup
@@ -220,15 +300,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 
     NSView *frameRateRow = [self rowWithLeading:frameRateLabel trailing:self.frameRatePopUp];
 
-    NSTextField *transitionLabel = [NSTextField labelWithString:@"Transition"];
-    transitionLabel.textColor = SVColorTokens.textPrimary;
-
-    NSPopUpButton *transitionPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    [transitionPopUp addItemWithTitle:@"Blend"];
-
-    NSView *transitionRow = [self rowWithLeading:transitionLabel trailing:transitionPopUp];
-
-    NSStackView *column = [NSStackView stackViewWithViews:@[ frameRateRow, [self dividerView], transitionRow ]];
+    NSStackView *column = [NSStackView stackViewWithViews:@[ frameRateRow ]];
     column.orientation = NSUserInterfaceLayoutOrientationVertical;
     column.alignment = NSLayoutAttributeLeading;
     column.spacing = 0.0;
@@ -312,6 +384,32 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     [self.delegate inspectorViewController:self didSetAutoChange:sender.state == NSControlStateValueOn];
 }
 
+- (void)changeAutoChangeInterval:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    if (index < 0 || (NSUInteger)index >= InspectorAutoIntervals().count)
+        return;
+    [self.delegate inspectorViewController:self didSetAutoChangeInterval:InspectorAutoIntervals()[(NSUInteger)index].doubleValue];
+}
+
+- (void)changeBlendPattern:(NSPopUpButton *)sender
+{
+    [self.delegate inspectorViewController:self didSelectBlendPattern:sender.indexOfSelectedItem - 1];
+}
+
+- (void)changeBlendSeconds:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    if (index < 0 || (NSUInteger)index >= InspectorBlendSeconds().count)
+        return;
+    [self.delegate inspectorViewController:self didSetBlendSeconds:InspectorBlendSeconds()[(NSUInteger)index].floatValue];
+}
+
+- (void)toggleHardCuts:(NSSwitch *)sender
+{
+    [self.delegate inspectorViewController:self didSetHardCuts:sender.state == NSControlStateValueOn];
+}
+
 - (void)selectAudioSource:(NSButton *)sender
 {
     [self.delegate inspectorViewController:self didSelectAudioSourceIndex:sender.tag];
@@ -330,13 +428,23 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     [self.delegate inspectorViewController:self didSetDebugOverlay:sender.state == NSControlStateValueOn];
 }
 
-- (void)setAutoChangeOn:(BOOL)on interval:(double)interval remaining:(double)remaining
+- (void)setAutoChangeOn:(BOOL)on interval:(double)interval
 {
     self.autoChangeSwitch.state = on ? NSControlStateValueOn : NSControlStateValueOff;
     self.everyLabel.textColor = on ? SVColorTokens.textPrimary : SVColorTokens.textDisabled;
-    self.autoChangeIntervalLabel.textColor = on ? SVColorTokens.textPrimary : SVColorTokens.textDisabled;
-    self.autoChangeIntervalLabel.stringValue = on ? [NSString stringWithFormat:@"%.0f seconds · next %.0f s", interval, ceil(remaining)]
-                                                 : [NSString stringWithFormat:@"%.0f seconds", interval];
+    self.autoChangeIntervalPopUp.enabled = on;
+    NSUInteger index = [InspectorAutoIntervals() indexOfObject:@(interval)];
+    if (index != NSNotFound)
+        [self.autoChangeIntervalPopUp selectItemAtIndex:(NSInteger)index];
+}
+
+- (void)setBlendPattern:(NSInteger)pattern blendSeconds:(float)seconds hardCutsOn:(BOOL)hardCutsOn
+{
+    [self.blendPatternPopUp selectItemAtIndex:pattern + 1];
+    NSUInteger index = [InspectorBlendSeconds() indexOfObject:@(seconds)];
+    if (index != NSNotFound)
+        [self.blendSecondsPopUp selectItemAtIndex:(NSInteger)index];
+    self.hardCutsSwitch.state = hardCutsOn ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 - (void)setFrameRate:(float)frameRate

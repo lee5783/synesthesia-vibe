@@ -30,6 +30,7 @@ struct VisualizerScreen: View {
 
                 presetSection
                 autoChangeSection
+                transitionSection
                 soundSourceSection
                 playbackSection
                 developerSection
@@ -98,7 +99,37 @@ struct VisualizerScreen: View {
         } header: {
             Text("Auto-change")
         } footer: {
-            Text("Moves to the next preset in the playlist.")
+            Text("The engine moves to the next preset in the playlist when the interval ends.")
+        }
+    }
+
+    private var transitionSection: some View {
+        Section {
+            NavigationLink(destination: TransitionScreen(store: store)) {
+                HStack {
+                    Text("Transition")
+                        .foregroundColor(DesignTokens.textPrimary)
+                    Spacer()
+                    Text(store.transitionLabel)
+                        .foregroundColor(DesignTokens.accentText)
+                }
+            }
+            NavigationLink(destination: BlendDurationScreen(store: store)) {
+                HStack {
+                    Text("Blend duration")
+                        .foregroundColor(DesignTokens.textPrimary)
+                    Spacer()
+                    Text(store.blendDurationLabel)
+                        .foregroundColor(DesignTokens.accentText)
+                }
+            }
+            Toggle("Hard cuts", isOn: $store.hardCutsEnabled)
+                .tint(DesignTokens.accentPrimary)
+                .foregroundColor(DesignTokens.textPrimary)
+        } header: {
+            Text("Transitions")
+        } footer: {
+            Text("Pattern and duration of the blend between presets. A hard cut loads the next preset with no blend.")
         }
     }
 
@@ -144,15 +175,6 @@ struct VisualizerScreen: View {
                 }
             }
             .pickerStyle(.segmented)
-            NavigationLink(destination: TransitionScreen()) {
-                HStack {
-                    Text("Transition")
-                        .foregroundColor(DesignTokens.textPrimary)
-                    Spacer()
-                    Text(VisualizerStore.transitionName)
-                        .foregroundColor(DesignTokens.accentText)
-                }
-            }
         } header: {
             Text("Playback")
         } footer: {
@@ -438,17 +460,56 @@ struct IntervalScreen: View {
 
 struct TransitionScreen: View {
 
+    @ObservedObject var store: VisualizerStore
+
     var body: some View {
         List {
-            HStack {
-                Text(VisualizerStore.transitionName).foregroundColor(DesignTokens.textPrimary)
-                Spacer()
-                Image(systemName: "checkmark").foregroundColor(DesignTokens.accentText)
+            ForEach(VisualizerStore.blendPatternChoices, id: \.self) { pattern in
+                Button {
+                    store.setBlendPattern(pattern)
+                } label: {
+                    HStack {
+                        Text(SVBlendPattern.name(for: pattern))
+                            .foregroundColor(DesignTokens.textPrimary)
+                        Spacer()
+                        if pattern == store.blendPattern {
+                            Image(systemName: "checkmark").foregroundColor(DesignTokens.accentText)
+                        }
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)
         .background(DesignTokens.backgroundSecondary)
         .navigationTitle("Transition")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct BlendDurationScreen: View {
+
+    @ObservedObject var store: VisualizerStore
+
+    var body: some View {
+        List {
+            ForEach(VisualizerStore.blendDurations, id: \.self) { seconds in
+                Button {
+                    store.setBlendDuration(seconds)
+                } label: {
+                    HStack {
+                        Text(VisualizerStore.blendDurationLabel(seconds))
+                            .foregroundColor(DesignTokens.textPrimary)
+                        Spacer()
+                        if seconds == store.blendDuration {
+                            Image(systemName: "checkmark").foregroundColor(DesignTokens.accentText)
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .background(DesignTokens.backgroundSecondary)
+        .navigationTitle("Blend duration")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

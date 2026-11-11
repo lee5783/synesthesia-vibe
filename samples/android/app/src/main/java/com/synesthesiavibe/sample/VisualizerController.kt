@@ -25,12 +25,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.synesthesiavibe.AudioInput
+import com.synesthesiavibe.BlendPattern
 import com.synesthesiavibe.PlaybackCaptureInput
 import com.synesthesiavibe.PreparedPreset
+import com.synesthesiavibe.PresetRequest
 import com.synesthesiavibe.SynesthesiaConfiguration
 import com.synesthesiavibe.SynesthesiaContext
 import com.synesthesiavibe.SynesthesiaException
 import com.synesthesiavibe.SynesthesiaRenderer
+import com.synesthesiavibe.TransitionConfiguration
 import com.synesthesiavibe.WavFeeder
 import java.io.File
 import java.util.concurrent.Executors
@@ -57,6 +60,11 @@ class VisualizerController(
     private val validatePath: File?,
     private val validateText: String?,
     private val temporaryDirectory: File,
+    initialAutoChangeSeconds: Float = 0f,
+    initialBlendSeconds: Float = BLEND_SECONDS,
+    initialBlendPattern: Int = BlendPattern.RANDOM,
+    initialHardCuts: Boolean = false,
+    private val hardCutLoudness: Float = TransitionConfiguration.DEFAULT_HARD_CUT_LOUDNESS,
 ) {
 
     var screen by mutableStateOf(SampleScreen.Visualizer)
@@ -79,9 +87,15 @@ class VisualizerController(
         private set
     var fps by mutableStateOf(initialFps)
         private set
-    var autoChangeEnabled by mutableStateOf(false)
+    var autoChangeEnabled by mutableStateOf(initialAutoChangeSeconds > 0f)
         private set
-    var secondsUntilChange by mutableStateOf(AUTO_CHANGE_SECONDS)
+    var autoChangeSeconds by mutableStateOf(if (initialAutoChangeSeconds > 0f) initialAutoChangeSeconds else AUTO_CHANGE_SECONDS)
+        private set
+    var blendSeconds by mutableStateOf(initialBlendSeconds)
+        private set
+    var blendPattern by mutableStateOf(initialBlendPattern)
+        private set
+    var hardCutsEnabled by mutableStateOf(initialHardCuts)
         private set
     var glVersion by mutableStateOf("")
         private set
@@ -130,14 +144,10 @@ class VisualizerController(
     private var userPaused = false
     private var lifecyclePaused = false
 
-    private val autoChangeTick = object : Runnable {
-        override fun run() {
-            if (autoChangeEnabled && playing && secondsUntilChange > 0) {
-                secondsUntilChange -= 1
-                if (secondsUntilChange == 0) selectPreset(stepPreset(1))
-            }
-            mainHandler.postDelayed(this, TICK_MILLIS)
-        }
+    private val presetRequestListener = SynesthesiaContext.PresetRequestListener { request ->
+        val reason = if (request.isHardCut) "hard_cut" else "timer"
+        Log.i(TAG, "preset request reason=$reason suggested_blend=${request.suggestedBlendSeconds} thread=${Thread.currentThread().name}")
+        mainHandler.post { answerRequest(request) }
     }
 
     private val glRenderer = object : GLSurfaceView.Renderer {
@@ -169,8 +179,6 @@ class VisualizerController(
         view.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         requestDisplayRate(view)
         surface = view
-        mainHandler.removeCallbacks(autoChangeTick)
-        mainHandler.postDelayed(autoChangeTick, TICK_MILLIS)
         Log.i(TAG, "surface attached preserveEGLContextOnPause=$preserveEglContext fps=$fps")
     }
 
@@ -206,7 +214,6 @@ class VisualizerController(
 
     fun detach() {
         stopLiveInput()
-        mainHandler.removeCallbacks(autoChangeTick)
         requestSequence.incrementAndGet()
         pendingPrepared.getAndSet(null)?.close()
         val view = surface ?: return
@@ -246,6 +253,9 @@ class VisualizerController(
         renderer.playbackRate = playbackRate
         renderer.debugInterval = DEBUG_INTERVAL_SECONDS
         renderer.debugListener = if (debugEnabled) debugListener else null
+        renderer.transitionConfiguration = transitionConfiguration()
+        renderer.blendPattern = blendPattern
+        renderer.presetRequestListener = presetRequestListener
         if (userPaused || lifecyclePaused) renderer.pause()
     }
 
@@ -301,13 +311,17 @@ class VisualizerController(
         }.start()
     }
 
-    fun selectPreset(next: Preset) {
+    fun selectPreset(next: Preset, blend: Float = blendSeconds) {
         preset = next
         loadedPreset = next
-        resetCountdown()
         val ticket = requestSequence.incrementAndGet()
         val target = renderer.context ?: return
-        prepareExecutor.execute { prepare(target, next, ticket) }
+        prepareExecutor.execute { prepare(target, next, ticket, blend) }
+    }
+
+    private fun answerRequest(request: PresetRequest) {
+        val blend = if (request.isHardCut) 0f else request.suggestedBlendSeconds
+        selectPreset(stepPreset(1), blend)
     }
 
     fun stepNext() = selectPreset(stepPreset(1))
@@ -336,13 +350,44 @@ class VisualizerController(
 
     fun setAutoChange(enabled: Boolean) {
         autoChangeEnabled = enabled
-        resetCountdown()
+        applyTransition()
         Log.i(TAG, "auto-change enabled=$enabled")
     }
 
-    private fun resetCountdown() {
-        secondsUntilChange = AUTO_CHANGE_SECONDS
+    fun applyAutoChangeSeconds(seconds: Float) {
+        autoChangeSeconds = seconds
+        applyTransition()
+        Log.i(TAG, "auto-change seconds=$seconds")
     }
+
+    fun applyBlendSeconds(seconds: Float) {
+        blendSeconds = seconds
+        applyTransition()
+    }
+
+    fun applyBlendPattern(pattern: Int) {
+        blendPattern = pattern
+        renderer.blendPattern = pattern
+        Log.i(TAG, "blend pattern=$pattern ${BlendPattern.name(pattern)}")
+    }
+
+    fun setHardCuts(enabled: Boolean) {
+        hardCutsEnabled = enabled
+        applyTransition()
+        Log.i(TAG, "hard cuts enabled=$enabled")
+    }
+
+    private fun applyTransition() {
+        renderer.transitionConfiguration = transitionConfiguration()
+    }
+
+    private fun transitionConfiguration(): TransitionConfiguration = TransitionConfiguration.builder()
+        .setSoftCutSeconds(blendSeconds)
+        .setPresetDuration(if (autoChangeEnabled) autoChangeSeconds else 0f)
+        .setPresetDurationRand(0f)
+        .setHardCutsEnabled(hardCutsEnabled)
+        .setHardCutLoudness(hardCutLoudness)
+        .build()
 
     fun applyDebugEnabled(enabled: Boolean) {
         debugEnabled = enabled
@@ -469,7 +514,7 @@ class VisualizerController(
             .onFailure { Log.e(TAG, "preset info failed: ${wanted.name}", it) }
     }
 
-    private fun prepare(target: SynesthesiaContext, wanted: Preset, ticket: Long) {
+    private fun prepare(target: SynesthesiaContext, wanted: Preset, ticket: Long, blend: Float) {
         if (ticket != requestSequence.get()) return
         val started = System.nanoTime()
         val prepared = try {
@@ -491,12 +536,12 @@ class VisualizerController(
                 pendingPrepared.compareAndSet(prepared, null)
                 prepared.close()
             } else {
-                view.queueEvent { commit(target, prepared, wanted, ticket) }
+                view.queueEvent { commit(target, prepared, wanted, ticket, blend) }
             }
         }
     }
 
-    private fun commit(target: SynesthesiaContext, prepared: PreparedPreset, wanted: Preset, ticket: Long) {
+    private fun commit(target: SynesthesiaContext, prepared: PreparedPreset, wanted: Preset, ticket: Long, blend: Float) {
         if (!pendingPrepared.compareAndSet(prepared, null)) {
             prepared.close()
             return
@@ -504,7 +549,7 @@ class VisualizerController(
         try {
             if (ticket != requestSequence.get() || renderer.context !== target) return
             val started = System.nanoTime()
-            runCatching { target.commitPreset(prepared, BLEND_SECONDS) }
+            runCatching { target.commitPreset(prepared, blend) }
                 .onSuccess {
                     Log.i(TAG, "preset loaded in ${(System.nanoTime() - started) / NANOS_PER_MILLI} ms: ${wanted.name}")
                     logPresetInfo(target, wanted)
@@ -523,7 +568,6 @@ class VisualizerController(
     companion object {
 
         private const val TAG = "SynesthesiaVibeSample"
-        private const val TICK_MILLIS = 1000L
         private const val FRAME_SECONDS = 1.0 / 60.0
         private const val MAX_FEED_SECONDS = 0.25
         private const val NANOS_PER_SECOND = 1.0e9
@@ -534,7 +578,8 @@ class VisualizerController(
         private const val GL_VERSION_PREFIX = "GL_VERSION="
 
         const val BLEND_SECONDS = 2f
-        const val AUTO_CHANGE_SECONDS = 30
+        const val MAX_BLEND_SECONDS = 10f
+        const val AUTO_CHANGE_SECONDS = 30f
         const val FPS_DEFAULT = 60f
         const val FPS_UNCAPPED = 0f
         const val DEBUG_INTERVAL_SECONDS = 1f

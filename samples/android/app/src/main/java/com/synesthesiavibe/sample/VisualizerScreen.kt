@@ -60,6 +60,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -90,6 +91,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.synesthesiavibe.BlendPattern
 
 private val FpsOptions = listOf(
     Triple(30f, "30", "30 fps"),
@@ -98,7 +100,7 @@ private val FpsOptions = listOf(
     Triple(VisualizerController.FPS_UNCAPPED, "Max", "Uncapped"),
 )
 
-private const val AUTO_CHANGE_SECONDS = 30
+private val AutoChangeOptions = listOf(10f, 15f, 30f, 60f, 120f)
 private const val DISABLED_ALPHA = 0.45f
 
 @Composable
@@ -208,10 +210,16 @@ private fun VisualizerScreen(
             )
             DropdownRow(
                 label = "Change every",
-                value = "$AUTO_CHANGE_SECONDS seconds",
-                options = listOf("$AUTO_CHANGE_SECONDS seconds"),
+                value = secondsLabel(controller.autoChangeSeconds),
+                options = AutoChangeOptions.map(::secondsLabel),
                 enabled = controller.autoChangeEnabled,
-                onSelected = {},
+                onSelected = { picked -> controller.applyAutoChangeSeconds(AutoChangeOptions.first { secondsLabel(it) == picked }) },
+            )
+            SwitchRow(
+                title = "Hard cuts",
+                supporting = "Loads the next preset with no blend on a loud beat",
+                checked = controller.hardCutsEnabled,
+                onCheckedChange = controller::setHardCuts,
             )
             SectionDivider()
             SectionHeader("Sound source")
@@ -224,7 +232,8 @@ private fun VisualizerScreen(
             SectionHeader("Playback")
             FrameRateRow(controller)
             Spacer(Modifier.height(20.dp))
-            TransitionRow()
+            BlendDurationRow(controller)
+            TransitionRow(controller)
             Spacer(Modifier.height(24.dp))
             SectionDivider()
             SectionHeader("Developer")
@@ -439,7 +448,7 @@ private fun nowPlayingSubtitle(controller: VisualizerController): String {
     val index = controller.playlist.indexOfFirst { it.file == controller.preset.file }
     val position = if (index < 0) 1 else index + 1
     val auto = if (controller.autoChangeEnabled) {
-        "Next preset in ${controller.secondsUntilChange} s"
+        "Changes every ${secondsLabel(controller.autoChangeSeconds)}"
     } else {
         "Auto-change off"
     }
@@ -624,19 +633,35 @@ private fun FrameRateRow(controller: VisualizerController) {
     }
 }
 
+@Composable
+private fun BlendDurationRow(controller: VisualizerController) {
+    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Blend duration", color = SvColors.TextPrimary)
+            Spacer(Modifier.weight(1f))
+            Text("%.1f s".format(controller.blendSeconds), color = SvColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+        }
+        Slider(
+            value = controller.blendSeconds,
+            onValueChange = { controller.applyBlendSeconds(Math.round(it * 10f) / 10f) },
+            valueRange = 0f..VisualizerController.MAX_BLEND_SECONDS,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TransitionRow() {
+private fun TransitionRow(controller: VisualizerController) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = it },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 20.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp),
     ) {
         OutlinedTextField(
-            value = "Blend",
+            value = BlendPattern.name(controller.blendPattern),
             onValueChange = {},
             readOnly = true,
             label = { Text("Transition") },
@@ -646,10 +671,20 @@ private fun TransitionRow() {
                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("Blend") }, onClick = { expanded = false })
+            (BlendPattern.RANDOM until BlendPattern.COUNT).forEach { pattern ->
+                DropdownMenuItem(
+                    text = { Text(BlendPattern.name(pattern)) },
+                    onClick = {
+                        controller.applyBlendPattern(pattern)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }
+
+private fun secondsLabel(seconds: Float): String = "${seconds.toInt()} seconds"
 
 @Composable
 private fun FullscreenScreen(controller: VisualizerController) {
@@ -783,14 +818,15 @@ private fun DebugCard(controller: VisualizerController, info: Map<String, Any?>?
         DebugGridRow("size", "${info["width"]}×${info["height"]} @1.0")
         DebugGridRow("gl", controller.glVersion)
         DebugGridRow("audio", audioDescription(controller))
-        DebugGridRow("rate", "1.0× · Blend")
+        DebugGridRow("rate", "1.0×")
+        DebugGridRow("blend", "${BlendPattern.name(controller.blendPattern)} · %.1f s".format(controller.blendSeconds))
         DebugGridRow(
             "auto",
             if (controller.autoChangeEnabled) {
-                "every $AUTO_CHANGE_SECONDS s · next ${controller.secondsUntilChange} s"
+                "every ${controller.autoChangeSeconds.toInt()} s"
             } else {
                 "off"
-            },
+            } + if (controller.hardCutsEnabled) " · hard cuts" else "",
         )
         DebugBar("bass", (info["bass"] as? Number)?.toFloat() ?: 0f, SvColors.AccentText)
         DebugBar("mid", (info["mid"] as? Number)?.toFloat() ?: 0f, SvColors.Info)
