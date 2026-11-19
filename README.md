@@ -51,8 +51,10 @@ in the tables below.
 - **Frame-rate cap:** `sv_config.max_fps`. 0 means uncapped. The view loops pace rendering to it, and it
   is fixed when the context is created. The cap does not change animation speed.
 - **Playback rate:** `sv_set_playback_rate(ctx, rate)` sets the simulation speed at runtime. The rate is
-  clamped to [0.125, 8] and defaults to 1. Interactive contexts advance in steps of one display period (30 to 120 Hz), so motion
-  looks the same at 30, 60 or 120 fps. Below 1× frames hold. Deterministic (capture) contexts ignore it.
+  clamped to [0.25, 4] and defaults to 1. Interactive contexts advance in steps of one display period (30 to 120 Hz), so motion
+  looks the same at 30, 60 or 120 fps. Below 1× the simulation steps are the 1× steps and the frames between them are
+  motion-compensated in-betweens, which show the picture one step late; live audio keeps driving the visuals. A device
+  that cannot keep up keeps its display rate and slows the simulation instead. Deterministic (capture) contexts ignore it.
 - **Luminance and flash limit:** `sv_config.max_luminance` (0 = off, otherwise a soft ceiling in (0, 1])
   and `sv_config.flash_limit` (0 = off, otherwise the largest rise in mean luminance per second). Both are
   off by default, fixed at creation and only ever darken the image. The flash limit is measured in
@@ -104,7 +106,7 @@ in the tables below.
 | Setting | Apple (Objective-C / Swift) | Android (Java) | Web (JavaScript) |
 |---|---|---|---|
 | Frame-rate cap | `SVContextConfiguration.maxFps`, runtime `SVView.preferredFramesPerSecond` (Swift `SynesthesiaPlayer.preferredFramesPerSecond`) | `Builder.setMaxFps` | `config.maxFps` |
-| Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
+| Playback rate | `SVContext.playbackRate`, `SVView.playbackRate` (Swift `SynesthesiaPlayer.playbackRate`) | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaRenderer.setPlaybackRate` | `SynesthesiaContext.setPlaybackRate`, `SynesthesiaCanvas.setPlaybackRate` |
 | Limiter | `SVContextConfiguration.maxLuminance`, `.flashLimit` | `Builder.setMaxLuminance`, `.setFlashLimit` | `config.maxLuminance`, `config.flashLimit` |
 | Debug info | `SVContext` / `SVView` `debugInfoHandler`, `debugInterval`, `debugEnabled` (Swift `SynesthesiaPlayer.debugInfo`) | `SynesthesiaContext.setDebugListener`, `setDebugInterval`; `SynesthesiaRenderer.setDebugListener`, `setDebugInterval` | `SynesthesiaContext.onDebugInfo`, `setDebugInterval`; `SynesthesiaCanvas.onDebugInfo`, `setDebugInterval` |
 | Transitions | `SVContext` / `SVView` `transitionConfiguration` (`SVTransitionConfiguration`), `blendPattern` (`SVBlendPattern`, `SVBlendPatternName`), `presetRequestHandler` (`SVPresetRequest`, called on the render thread after the frame); Swift `SynesthesiaPlayer.transitionConfiguration`, `blendPattern`, `presetRequestHandler` | `SynesthesiaContext` / `SynesthesiaRenderer` `setTransitionConfiguration(TransitionConfiguration)` (`null` = defaults), `setBlendPattern(int)` (`BlendPattern`), `setPresetRequestListener(PresetRequestListener)` (called on the GL thread) | `SynesthesiaContext` / `SynesthesiaCanvas` `setTransitionConfig({...})`, `setBlendPattern(n)` (`BLEND_PATTERN_NAMES`), `onPresetRequest(handler)`; re-applied after context restore |

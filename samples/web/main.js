@@ -78,6 +78,7 @@ class SampleApp {
         this.#listen();
         this.#fillPatterns();
         this.#seedFps();
+        this.#seedSpeed();
         this.#renderSources();
         this.#updateControls();
 
@@ -155,6 +156,7 @@ class SampleApp {
         elements.blendSeconds.addEventListener("input", () => this.#changeBlendSeconds(Number(elements.blendSeconds.value)));
         elements.hardCuts.addEventListener("click", () => this.#toggleHardCuts());
         elements.fps.addEventListener("change", () => this.#changeFps(Number(elements.fps.value)));
+        elements.speed.addEventListener("change", () => this.#changeSpeed(Number(elements.speed.value)));
         elements.debugSwitch.addEventListener("click", () => this.#toggleDebug());
         elements.debugButton.addEventListener("click", () => this.#toggleDebug());
         elements.errorDismiss.addEventListener("click", () => this.hideError());
@@ -201,6 +203,39 @@ class SampleApp {
 
         select.append(new Option(value === 0 ? "Uncapped" : value + " fps", String(value), true, true));
         select.value = String(value);
+    }
+
+    #seedSpeed() {
+        const value = this.#playbackRate;
+        const select = this.#elements.speed;
+        const existing = [...select.options].find(option => Number(option.value) === value);
+
+        if (existing !== undefined) {
+            select.value = existing.value;
+            return;
+        }
+
+        select.append(new Option(value + "×", String(value), true, true));
+        select.value = String(value);
+    }
+
+    #changeSpeed(value) {
+        this.#playbackRate = value;
+        this.#view?.setPlaybackRate(value);
+        console.info("playback rate: " + value);
+    }
+
+    #rateText(info) {
+        const reported = Number(info?.playback_rate);
+        const shown = Number.isFinite(reported) ? reported : this.#playbackRate;
+
+        if (info === null || info === undefined)
+            return shown.toFixed(2) + "×";
+
+        const fps = Number(info.display_fps) || 0;
+        const steps = Number(info.sim_steps_per_frame) || 0;
+        const reached = steps * fps / Math.min(120, Math.max(30, Math.round(fps)));
+        return shown.toFixed(2) + "× → " + reached.toFixed(2) + "×";
     }
 
     #setPresets(presets) {
@@ -641,7 +676,7 @@ class SampleApp {
         elements.debugSize.textContent = info.width + "×" + info.height + " @1.0";
         elements.debugGl.textContent = this.#glString() || "WebGL2";
         elements.debugAudio.textContent = this.#audioLabel();
-        elements.debugRate.textContent = "1.0× · " + this.#patternLabel();
+        elements.debugRate.textContent = this.#rateText(info) + " · " + this.#patternLabel();
         elements.debugAuto.textContent = this.#autoText();
         setBar(elements.debugBass, info.bass);
         setBar(elements.debugMid, info.mid);
@@ -662,7 +697,7 @@ class SampleApp {
         elements.debugSize.textContent = "--";
         elements.debugGl.textContent = this.#glString() || "WebGL2";
         elements.debugAudio.textContent = this.#audioLabel();
-        elements.debugRate.textContent = "1.0× · " + this.#patternLabel();
+        elements.debugRate.textContent = this.#rateText(null) + " · " + this.#patternLabel();
         elements.debugAuto.textContent = this.#autoText();
         setBar(elements.debugBass, 0);
         setBar(elements.debugMid, 0);
@@ -673,7 +708,7 @@ class SampleApp {
     }
 
     #autoText() {
-        return this.#autoEnabled ? "every " + this.#autoInterval + " s" : "off";
+        return this.#autoEnabled ? "every " + this.#autoInterval + " s at 1×" : "off";
     }
 
     #glString() {
@@ -709,7 +744,7 @@ class SampleApp {
         elements.intervalRow.classList.toggle("disabled", !this.#autoEnabled);
         elements.hardCuts.classList.toggle("on", this.#hardCutsEnabled);
         elements.hardCuts.setAttribute("aria-checked", String(this.#hardCutsEnabled));
-        elements.blendValue.textContent = this.#blendSeconds.toFixed(1) + " s";
+        elements.blendValue.textContent = this.#blendSeconds.toFixed(1) + " s at 1×";
         elements.debugSwitch.classList.toggle("on", this.#debugEnabled);
         elements.debugSwitch.setAttribute("aria-checked", String(this.#debugEnabled));
         elements.debugButton.classList.toggle("on", this.#debugEnabled);
@@ -736,7 +771,7 @@ class SampleApp {
         const count = this.#presets.length;
         elements.nowPlaying.textContent = this.#presetName;
         const position = count === 0 ? "Preset 0 of 0" : "Preset " + (this.#presetIndex + 1) + " of " + count;
-        const auto = this.#autoEnabled ? "Next preset every " + this.#autoInterval + " s" : "Auto-change off";
+        const auto = this.#autoEnabled ? "Next preset every " + this.#autoInterval + " s at 1×" : "Auto-change off";
         elements.nowSubtitle.textContent = position + " · " + auto;
     }
 }
@@ -801,6 +836,7 @@ function elementsById() {
         interval: byId("interval"),
         intervalRow: byId("interval-row"),
         fps: byId("fps"),
+        speed: byId("speed"),
         transition: byId("transition"),
         blendSeconds: byId("blend-seconds"),
         blendValue: byId("blend-value"),

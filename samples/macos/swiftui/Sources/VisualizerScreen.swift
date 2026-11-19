@@ -36,6 +36,7 @@ struct VisualizerScreen: View {
                                   hardCutsOn: $model.hardCutsOn,
                                   audioSource: audioSourceBinding,
                                   frameRate: $model.frameRate,
+                                  playbackRate: $model.playbackRate,
                                   debugOverlayOn: $model.debugOverlayOn,
                                   systemAudioSupported: model.systemAudioSupported)
                         .inspectorColumnWidth(min: 280, ideal: 320, max: 380)

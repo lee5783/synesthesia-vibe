@@ -52,9 +52,19 @@ constexpr double kBeatdropMaxSimulationRate = 120.0;
 constexpr double kBeatdropSimulationStepTolerance = 0.25;
 constexpr int kBeatdropMaxSimulationStepsPerFrame = 4;
 constexpr double kBeatdropMaxFrameDtSeconds = 1.0;
-constexpr float kBeatdropMinPlaybackRate = 0.125f;
-constexpr float kBeatdropMaxPlaybackRate = 8.0f;
+constexpr float kBeatdropMinPlaybackRate = 0.25f;
+constexpr float kBeatdropMaxPlaybackRate = 4.0f;
 constexpr float kBeatdropDisplayFpsDamping = 0.9f;
+constexpr double kBeatdropStepBudgetSeconds = 1.0 / kBeatdropMinSimulationRate;
+constexpr double kBeatdropStepBudgetMargin = 1.15;
+constexpr int kBeatdropStepBudgetOverFrames = 2;
+constexpr int kBeatdropStepBudgetSettleFrames = 3;
+constexpr int kBeatdropStepBudgetVerifyFrames = 5;
+constexpr double kBeatdropStepBudgetResponseRatio = 0.9;
+constexpr int kBeatdropStepBudgetProbeStartFrames = 30;
+constexpr int kBeatdropStepBudgetProbeMaxFrames = 960;
+constexpr int kBeatdropStepBudgetProbeTrialFrames = 8;
+constexpr double kBeatdropStepBudgetHeadroomRatio = 0.55;
 constexpr float kBeatdropDefaultDebugIntervalSeconds = 1.0f;
 constexpr sv_transition_config kBeatdropDefaultTransition = { 2.7f, 16.0f, 10.0f, false, 2.5f, 60.0f };
 constexpr float kBeatdropProgressTimeBetweenPresets = 16.0f;
@@ -70,6 +80,28 @@ struct BdPresetInfoSnapshot
     int warpShader;
     int compShader;
     char fallbackReason[256];
+};
+
+struct BdStepBudget
+{
+    double budgetSeconds;
+    int limit;
+    int lastSteps;
+    double previousInterval;
+    int overCount;
+    int underCount;
+    int cleanCount;
+    int settleLeft;
+    int probeWait;
+    int probeFrom;
+    int probeLeft;
+    bool probeFailed;
+    bool binding;
+    bool verifying;
+    int verifyLeft;
+    int verifyPreviousLimit;
+    double verifyReference;
+    double verifyWorst;
 };
 
 struct sv_context
@@ -104,8 +136,11 @@ struct sv_context
 
     float playbackRate;
     double stepAccumulator;
+    double motionFraction;
     double lastWallSeconds;
     bool resumePending;
+    bool stepBudgetRelearnPending;
+    BdStepBudget stepBudget;
     float displayFps;
     float limiterLastTime;
 

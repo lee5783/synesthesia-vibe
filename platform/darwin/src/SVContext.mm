@@ -28,8 +28,8 @@ namespace
     constexpr const char* kRendererUnavailablePrefix = "renderer unavailable";
     constexpr size_t kValidateErrorBytes = 1024;
     constexpr float kDefaultPlaybackRate = 1.0f;
-    constexpr float kMinimumPlaybackRate = 0.125f;
-    constexpr float kMaximumPlaybackRate = 8.0f;
+    constexpr float kMinimumPlaybackRate = 0.25f;
+    constexpr float kMaximumPlaybackRate = 4.0f;
     constexpr float kDefaultDebugInterval = 1.0f;
 
 #if TARGET_OS_OSX

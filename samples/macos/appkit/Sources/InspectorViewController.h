@@ -19,6 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)inspectorViewController:(InspectorViewController *)controller didSetBlendSeconds:(float)seconds;
 - (void)inspectorViewController:(InspectorViewController *)controller didSetHardCuts:(BOOL)on;
 - (void)inspectorViewController:(InspectorViewController *)controller didSetFrameRate:(float)frameRate;
+- (void)inspectorViewController:(InspectorViewController *)controller didSetPlaybackRate:(float)playbackRate;
 - (void)inspectorViewController:(InspectorViewController *)controller didSelectAudioSourceIndex:(NSInteger)index;
 - (void)inspectorViewController:(InspectorViewController *)controller didSetDebugOverlay:(BOOL)on;
 
@@ -33,6 +34,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setAutoChangeOn:(BOOL)on interval:(double)interval;
 - (void)setBlendPattern:(NSInteger)pattern blendSeconds:(float)seconds hardCutsOn:(BOOL)hardCutsOn;
 - (void)setFrameRate:(float)frameRate;
+- (void)setPlaybackRate:(float)playbackRate;
 - (void)setAudioSourceIndex:(NSInteger)index;
 - (void)setDebugOverlayOn:(BOOL)on;
 

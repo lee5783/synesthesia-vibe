@@ -20,6 +20,9 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     @Published public var preferredFramesPerSecond: Float {
         didSet { view?.preferredFramesPerSecond = preferredFramesPerSecond }
     }
+    @Published public var playbackRate: Float = 1 {
+        didSet { view?.playbackRate = playbackRate }
+    }
     @Published public private(set) var lastError: Error?
     @Published public private(set) var levels = SVAudioLevels(bass: 0, mid: 0, treble: 0)
     @Published public private(set) var debugInfo: [String: Any]?
@@ -77,6 +80,7 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.delegate = self
         view.isPaused = isPaused
         view.preferredFramesPerSecond = preferredFramesPerSecond
+        view.playbackRate = playbackRate
         view.debugInterval = debugInterval
         view.debugEnabled = debugEnabled
         view.debugInfoHandler = { [weak self] info in

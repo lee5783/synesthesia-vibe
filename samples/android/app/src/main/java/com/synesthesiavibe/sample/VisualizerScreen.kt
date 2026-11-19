@@ -93,6 +93,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.synesthesiavibe.BlendPattern
 
+private val PlaybackRateOptions = listOf(
+    0.25f to "1/4×",
+    0.5f to "1/2×",
+    1f to "1×",
+    2f to "2×",
+    4f to "4×",
+)
+
 private val FpsOptions = listOf(
     Triple(30f, "30", "30 fps"),
     Triple(60f, "60", "60 fps"),
@@ -209,7 +217,7 @@ private fun VisualizerScreen(
                 onCheckedChange = controller::setAutoChange,
             )
             DropdownRow(
-                label = "Change every",
+                label = "Change every (at 1×)",
                 value = secondsLabel(controller.autoChangeSeconds),
                 options = AutoChangeOptions.map(::secondsLabel),
                 enabled = controller.autoChangeEnabled,
@@ -231,6 +239,7 @@ private fun VisualizerScreen(
             SectionDivider()
             SectionHeader("Playback")
             FrameRateRow(controller)
+            PlaybackRateRow(controller)
             Spacer(Modifier.height(20.dp))
             BlendDurationRow(controller)
             TransitionRow(controller)
@@ -448,7 +457,7 @@ private fun nowPlayingSubtitle(controller: VisualizerController): String {
     val index = controller.playlist.indexOfFirst { it.file == controller.preset.file }
     val position = if (index < 0) 1 else index + 1
     val auto = if (controller.autoChangeEnabled) {
-        "Changes every ${secondsLabel(controller.autoChangeSeconds)}"
+        "Changes every ${secondsLabel(controller.autoChangeSeconds)} at 1×"
     } else {
         "Auto-change off"
     }
@@ -634,12 +643,40 @@ private fun FrameRateRow(controller: VisualizerController) {
 }
 
 @Composable
+private fun PlaybackRateRow(controller: VisualizerController) {
+    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+        Text("Speed", color = SvColors.TextPrimary)
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            PlaybackRateOptions.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = controller.playbackRateSetting == option.first,
+                    onClick = { controller.applyPlaybackRate(option.first) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = PlaybackRateOptions.size),
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = SvColors.AccentSubtle,
+                        activeContentColor = SvColors.TextPrimary,
+                        activeBorderColor = SvColors.BorderStrong,
+                        inactiveContainerColor = Color.Transparent,
+                        inactiveContentColor = SvColors.TextPrimary,
+                        inactiveBorderColor = SvColors.BorderStrong,
+                    ),
+                    label = { Text(option.second) },
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Applies live. Durations below are at 1×.", color = SvColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
 private fun BlendDurationRow(controller: VisualizerController) {
     Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Blend duration", color = SvColors.TextPrimary)
             Spacer(Modifier.weight(1f))
-            Text("%.1f s".format(controller.blendSeconds), color = SvColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+            Text("%.1f s at 1×".format(controller.blendSeconds), color = SvColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
         }
         Slider(
             value = controller.blendSeconds,
@@ -818,12 +855,12 @@ private fun DebugCard(controller: VisualizerController, info: Map<String, Any?>?
         DebugGridRow("size", "${info["width"]}×${info["height"]} @1.0")
         DebugGridRow("gl", controller.glVersion)
         DebugGridRow("audio", audioDescription(controller))
-        DebugGridRow("rate", "1.0×")
-        DebugGridRow("blend", "${BlendPattern.name(controller.blendPattern)} · %.1f s".format(controller.blendSeconds))
+        DebugGridRow("rate", rateDescription(info, displayFps))
+        DebugGridRow("blend", "${BlendPattern.name(controller.blendPattern)} · %.1f s at 1×".format(controller.blendSeconds))
         DebugGridRow(
             "auto",
             if (controller.autoChangeEnabled) {
-                "every ${controller.autoChangeSeconds.toInt()} s"
+                "every ${controller.autoChangeSeconds.toInt()} s at 1×"
             } else {
                 "off"
             } + if (controller.hardCutsEnabled) " · hard cuts" else "",
@@ -835,6 +872,13 @@ private fun DebugCard(controller: VisualizerController, info: Map<String, Any?>?
             Text(lastError, color = SvColors.Danger, style = monoSmall)
         }
     }
+}
+
+private fun rateDescription(info: Map<String, Any?>, displayFps: Float): String {
+    val reported = (info["playback_rate"] as? Number)?.toFloat() ?: 1f
+    val stepsPerFrame = (info["sim_steps_per_frame"] as? Number)?.toFloat() ?: 0f
+    val reached = stepsPerFrame * displayFps / Math.round(displayFps).coerceIn(30, 120).toFloat()
+    return "%.2f× → %.2f×".format(reported, reached)
 }
 
 private fun audioDescription(controller: VisualizerController): String {

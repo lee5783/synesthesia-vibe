@@ -175,10 +175,16 @@ struct VisualizerScreen: View {
                 }
             }
             .pickerStyle(.segmented)
+            Picker("Speed", selection: $store.playbackRate) {
+                ForEach(VisualizerStore.playbackRates, id: \.self) { rate in
+                    Text(VisualizerStore.playbackRateLabel(rate)).tag(rate)
+                }
+            }
+            .pickerStyle(.segmented)
         } header: {
             Text("Playback")
         } footer: {
-            Text("Frame rate caps rendering; animation speed stays the same.")
+            Text("Frame rate caps rendering. Speed scales the animation; durations in this app are stated at 1x.")
         }
     }
 

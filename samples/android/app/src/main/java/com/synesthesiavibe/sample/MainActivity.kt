@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showVisualizer() {
         val library = SampleLibrary.install(this)
+        val sweepRequest = if (SweepRequest.isRequested(intent)) prepareSweep(library) ?: return else null
         val initialPreset = intent.getStringExtra(EXTRA_PRESET)?.let { key -> library.preset(key) ?: library.capturePreset(key)?.let { library.preset(it.file.name) } }
             ?: library.presets.first()
         val metrics = resources.displayMetrics
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
             initialBlendPattern = intent.getIntExtra(EXTRA_BLEND_PATTERN, BlendPattern.RANDOM),
             initialHardCuts = intent.getBooleanExtra(EXTRA_HARD_CUTS, false),
             hardCutLoudness = intent.getFloatExtra(EXTRA_HARD_CUT_LOUDNESS, TransitionConfiguration.DEFAULT_HARD_CUT_LOUDNESS),
+            sweepRequest = sweepRequest,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) observeProjection()
         setContent {
@@ -111,6 +113,21 @@ class MainActivity : ComponentActivity() {
                 VisualizerApp()
             }
         }
+    }
+
+    private fun prepareSweep(library: SampleLibrary): SweepRequest? {
+        val outputDirectory = SweepRequest.outputDirectory(this, intent)
+        val request = runCatching { SweepRequest.from(this, intent, library) }.getOrElse {
+            Log.e(TAG, "SWEEP FAILED ${it.message}", it)
+            runCatching {
+                outputDirectory.mkdirs()
+                File(outputDirectory, SweepRequest.DONE_FILE).writeText("SWEEP FAILED ${it.message ?: it}\n")
+            }
+            finish()
+            return null
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        return request
     }
 
     @Composable

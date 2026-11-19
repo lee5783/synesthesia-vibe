@@ -43,6 +43,9 @@ final class VisualizerModel: ObservableObject {
     @Published var frameRate: Float {
         didSet { player.preferredFramesPerSecond = frameRate }
     }
+    @Published var playbackRate: Float = 1 {
+        didSet { player.playbackRate = playbackRate }
+    }
     @Published var debugOverlayOn = false {
         didSet { player.debugEnabled = debugOverlayOn }
     }

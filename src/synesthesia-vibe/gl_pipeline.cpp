@@ -19,6 +19,8 @@
 
 namespace
 {
+    constexpr int kBeatdropFlowPixels = 64 * 1024;
+
     class BdZeroRawClock : public render_core::IRawClock
     {
     public:
@@ -65,6 +67,9 @@ namespace
 
         const char* blurDumpFrame = getenv("SYNESTHESIA_VIBE_BLUR_DUMP_FRAME");
         gl->blurDumpFrame = blurDumpFrame != nullptr ? atoi(blurDumpFrame) : 0;
+
+        const char* flowPixels = getenv("SYNESTHESIA_VIBE_FLOW_PIXELS");
+        gl->flowPixels = flowPixels != nullptr ? atoi(flowPixels) : kBeatdropFlowPixels;
     }
 
     bool BdGlUploadWarpIndices(sv_context* ctx)
@@ -186,6 +191,7 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->gl->presentBlurTexUsed = 0;
     ctx->gl->forcedBlurLevels = 0;
     ctx->gl->blurDumpFrame = 0;
+    ctx->gl->flowPixels = kBeatdropFlowPixels;
     ctx->gl->warpIndexCount = 0;
     ctx->gl->glErrorCount = 0;
     ctx->gl->warpShaderActive = false;
@@ -200,6 +206,12 @@ void BdGlPipelineCreate(sv_context* ctx)
     ctx->gl->ready = false;
     ctx->gl->limiterEnabled = ctx->config.max_luminance > 0.0f || ctx->config.flash_limit > 0.0f;
     ctx->gl->presetCache.SetTranslationCache(&ctx->translationCache);
+    ctx->gl->interpolatorFailed = false;
+    ctx->gl->motionFieldPath = false;
+    ctx->gl->pairOnScreen = false;
+    ctx->gl->framesSinceMotion = 0;
+    ctx->gl->shownFraction = 0.0f;
+    ctx->gl->shownFramesPerStep = 0.0f;
 
     BdGlReadDevOverrides(ctx->gl);
 
@@ -245,6 +257,13 @@ void BdGlPipelineResize(sv_context* ctx)
     }
 
     gl->warpVerts.assign(ctx->meshVerts.size(), render_core::Vertex());
+    if (!gl->interpolator.Resize(ctx->width, ctx->height, gl->flowPixels))
+        gl->interpolator.Destroy();
+
+    gl->interpolatorFailed = false;
+    gl->motionFieldPath = false;
+    gl->pairOnScreen = false;
+    gl->framesSinceMotion = 0;
 
     if (gl->limiterEnabled && !gl->limiter.Resize(ctx->width, ctx->height))
     {
