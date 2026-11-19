@@ -21,6 +21,7 @@
 #include "luminance_limiter.h"
 #include "mesh.h"
 #include "mesh_buffer.h"
+#include "motion_interpolator.h"
 #include "noise_textures.h"
 #include "preset_shader_inputs.h"
 #include "shader_translator.h"
@@ -58,6 +59,7 @@ struct BdGlPipeline
     render_gl::MeshBuffer compMesh;
     render_gl::CompositeGrid compGrid;
     render_gl::LuminanceLimiter limiter;
+    render_gl::MotionInterpolator interpolator;
 
     std::vector<render_core::Vertex> warpVerts;
 
@@ -67,6 +69,7 @@ struct BdGlPipeline
     int presentBlurTexUsed;
     int forcedBlurLevels;
     int blurDumpFrame;
+    int flowPixels;
     int warpIndexCount;
     int glErrorCount;
     bool warpShaderActive;
@@ -76,6 +79,12 @@ struct BdGlPipeline
     bool resourcesBuilt;
     bool ready;
     bool limiterEnabled;
+    bool interpolatorFailed;
+    bool motionFieldPath;
+    bool pairOnScreen;
+    int framesSinceMotion;
+    float shownFraction;
+    float shownFramesPerStep;
 };
 
 void BdGlPipelineCreate(sv_context* ctx);
@@ -89,5 +98,13 @@ void BdGlRenderFrame(sv_context* ctx, uint32_t targetFbo);
 void BdGlBeginFrame(sv_context* ctx);
 void BdGlStepFrame(sv_context* ctx);
 void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo);
+bool BdGlMotionBuildFrame(sv_context* ctx, uint32_t targetFbo);
+void BdGlNoteHardCut(sv_context* ctx);
+bool BdGlMotionHistoryEmpty(sv_context* ctx);
+bool BdGlMotionPairOnScreen(sv_context* ctx);
+bool BdGlMotionFieldPath(sv_context* ctx);
+void BdGlRepresentMotionPair(sv_context* ctx, uint32_t targetFbo);
+void BdGlPlayOutMotionPair(sv_context* ctx, uint32_t targetFbo);
+void BdGlPresentMotionFrame(sv_context* ctx, uint32_t targetFbo, bool stepped, float fraction, float framesPerStep);
 
 #endif

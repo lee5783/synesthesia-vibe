@@ -40,6 +40,7 @@ final class VisualizerStore: ObservableObject {
     static let blendDurations: [Float] = [0, 1, 2, 2.7, 4, 6, 8, 10]
     static let defaultBlendDuration: Float = 2
     static let frameRates: [Float] = [30, 60, 120, 0]
+    static let playbackRates: [Float] = [0.25, 0.5, 1, 2, 4]
     static let autoIntervals: [TimeInterval] = [10, 15, 30, 60]
     static let bundledFolderName = "mvp-presets"
     static let blendPatternChoices: [Int] = [SVBlendPattern.random.rawValue] + Array(0..<SVBlendPatternCount)
@@ -77,6 +78,10 @@ final class VisualizerStore: ObservableObject {
     }
 
     @Published var fpsSetting: Float
+
+    @Published var playbackRate: Float = 1 {
+        didSet { player.playbackRate = playbackRate }
+    }
 
     @Published var debugEnabled = false {
         didSet { player.debugEnabled = debugEnabled }
@@ -153,6 +158,14 @@ final class VisualizerStore: ObservableObject {
     var presetCount: Int { presets.count }
 
     var fpsLabel: String { fpsSetting > 0 ? "\(Int(fpsSetting)) fps" : "Uncapped" }
+
+    static func playbackRateLabel(_ rate: Float) -> String {
+        switch rate {
+        case 0.25: return "1/4"
+        case 0.5: return "1/2"
+        default: return String(Int(rate))
+        }
+    }
 
     var capLabel: String { fpsSetting > 0 ? String(Int(fpsSetting)) : "none" }
 

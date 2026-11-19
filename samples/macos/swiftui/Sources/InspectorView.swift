@@ -17,6 +17,7 @@ struct InspectorView: View {
     @Binding var hardCutsOn: Bool
     @Binding var audioSource: AudioSource
     @Binding var frameRate: Float
+    @Binding var playbackRate: Float
     @Binding var debugOverlayOn: Bool
 
     let systemAudioSupported: Bool
@@ -162,8 +163,22 @@ struct InspectorView: View {
                     .fixedSize()
                     .accessibilityIdentifier("frame-rate-picker")
                 }
+                row {
+                    Text("Speed")
+                        .foregroundStyle(Color.svTextPrimary)
+                    Spacer(minLength: 8)
+                    Picker("Speed", selection: $playbackRate) {
+                        ForEach(playbackRateOptions, id: \.self) { rate in
+                            Text(playbackRateLabel(rate)).tag(rate)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .accessibilityIdentifier("speed-picker")
+                }
             }
-            footer("Frame rate applies live through preferredFramesPerSecond.")
+            footer("Frame rate applies live through preferredFramesPerSecond. Speed scales the animation; durations are stated at 1x.")
         }
     }
 
@@ -195,6 +210,16 @@ struct InspectorView: View {
     private var frameRateOptions: [Float] {
         let options: [Float] = [30, 60, 120, 0]
         return options.contains(frameRate) ? options : options + [frameRate]
+    }
+
+    private var playbackRateOptions: [Float] { [0.25, 0.5, 1, 2, 4] }
+
+    private func playbackRateLabel(_ rate: Float) -> String {
+        switch rate {
+        case 0.25: return "1/4×"
+        case 0.5: return "1/2×"
+        default: return "\(Int(rate))×"
+        }
     }
 
     private func frameRateLabel(_ rate: Float) -> String {

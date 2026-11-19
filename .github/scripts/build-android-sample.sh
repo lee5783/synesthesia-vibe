@@ -9,6 +9,7 @@
 set -euo pipefail
 
 MODE=""
+PRESET_SET=""
 
 print_help() {
   cat <<'EOF'
@@ -16,7 +17,7 @@ build-android-sample.sh -- builds the SynesthesiaVibe Android sample APK for a r
 
 USAGE
 
-    .github/scripts/build-android-sample.sh --release | --debug
+    .github/scripts/build-android-sample.sh --release | --debug [--preset-set <dir>]
 
   Runs from any working directory. Calls ./gradlew :app:assembleRelease or :app:assembleDebug in
   samples/android (which includes platform/android as a composite build, so the native library is
@@ -25,12 +26,21 @@ USAGE
     build/samples/synesthesiavibe-sample-android-<version>.apk        (--release)
     build/samples/synesthesiavibe-sample-android-<version>-debug.apk  (--debug)
 
+  With --preset-set <dir> the file name gains a set suffix, for example
+  synesthesiavibe-sample-android-<version>-debug-favorite-presets-2013-12.apk.
+
 PARAMETERS
 
   --release  Release build signed with the keystore described by ANDROID_KEYSTORE_FILE,
              ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. All four
              must be set.
   --debug    Debug build signed with the local debug key.
+  --preset-set <dir>
+             Bundle the presets and textures of a preset set instead of resources/mvp-presets
+             (opt-in; passed to Gradle as -PsvPresetSet). <dir> is absolute or relative to the
+             repo root and holds presets/ (every .milk, subfolders flattened to
+             "<subfolder> - <name>.milk") and optionally textures/, laid over
+             resources/beatdrop/textures. Without it the bundled assets are unchanged.
   --help     This text.
 
 NOTES
@@ -58,6 +68,11 @@ while [[ $# -gt 0 ]]; do
     --debug)
       MODE="debug"
       shift
+      ;;
+    --preset-set)
+      [[ $# -ge 2 ]] || { echo "--preset-set needs a directory" >&2; exit 2; }
+      PRESET_SET="$2"
+      shift 2
       ;;
     --help|-h)
       print_help
@@ -123,10 +138,21 @@ else
   OUT="$OUT_ROOT/$ARTIFACT_ID-$VERSION-debug.apk"
 fi
 
+GRADLE_ARGS=("$TASK")
+if [[ -n "$PRESET_SET" ]]; then
+  [[ "$PRESET_SET" == /* ]] || PRESET_SET="$REPO_ROOT/$PRESET_SET"
+  [[ -d "$PRESET_SET/presets" ]] || fail "--preset-set $PRESET_SET has no presets directory"
+  PRESET_SET="$(cd "$PRESET_SET" && pwd)"
+  SET_SUFFIX="$(basename "$PRESET_SET" | tr '[:upper:]_' '[:lower:]-' | tr -c 'a-z0-9\n-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+  GRADLE_ARGS+=("-PsvPresetSet=$PRESET_SET")
+  OUT="${OUT%.apk}-$SET_SUFFIX.apk"
+  log "preset set $PRESET_SET"
+fi
+
 log "version $VERSION"
-log "gradle $TASK"
+log "gradle ${GRADLE_ARGS[*]}"
 rm -f "$APK"
-(cd "$SAMPLE_DIR" && ./gradlew "$TASK") || fail "gradle $TASK failed"
+(cd "$SAMPLE_DIR" && ./gradlew "${GRADLE_ARGS[@]}") || fail "gradle $TASK failed"
 
 [[ -f "$APK" ]] || fail "missing $APK"
 

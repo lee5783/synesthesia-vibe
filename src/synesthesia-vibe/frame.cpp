@@ -23,6 +23,11 @@ namespace
     constexpr int kBeatdropAlignSamples = 480;
     constexpr int kBeatdropAlignMaxOctaves = 10;
 
+    constexpr double kBeatdropWholeStepTolerance = 1.0e-6;
+    constexpr double kBeatdropMotionGridTolerance = 0.75;
+    constexpr double kBeatdropMotionStepEpsilon = 1e-9;
+    constexpr int kBeatdropMotionLatticeSize = 32;
+
     int BdWeekdayFromDate(int year, int month, int day)
     {
         int y = year;
@@ -460,11 +465,12 @@ namespace
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
-    double BdHostFrameSeconds(sv_context* ctx, double dt_seconds)
+    double BdHostFrameSeconds(sv_context* ctx, double dt_seconds, bool& measured)
     {
         const double now = BdWallSeconds();
         const double previous = ctx->lastWallSeconds;
         ctx->lastWallSeconds = now;
+        measured = false;
 
         if (ctx->resumePending)
         {
@@ -473,11 +479,15 @@ namespace
         }
 
         if (std::isfinite(dt_seconds) && dt_seconds > 0.0)
+        {
+            measured = ctx->frame > 0;
             return std::min(dt_seconds, kBeatdropMaxFrameDtSeconds);
+        }
 
         if (previous <= 0.0)
             return 1.0 / static_cast<double>(ctx->fpsHint);
 
+        measured = ctx->frame > 0;
         return std::min(std::max(now - previous, 0.0), kBeatdropMaxFrameDtSeconds);
     }
 
@@ -493,23 +503,204 @@ namespace
         return static_cast<int>(std::ceil(kBeatdropMaxSimulationStepsPerFrame * rate));
     }
 
+    void BdRelearnStepBudget(sv_context* ctx)
+    {
+        BdStepBudget& b = ctx->stepBudget;
+        b.limit = 0;
+        b.lastSteps = -1;
+        b.previousInterval = 0.0;
+        b.overCount = 0;
+        b.underCount = 0;
+        b.cleanCount = 0;
+        b.settleLeft = 0;
+        b.probeWait = kBeatdropStepBudgetProbeStartFrames;
+        b.probeFrom = 0;
+        b.probeLeft = 0;
+        b.probeFailed = false;
+        b.binding = false;
+        b.verifying = false;
+        b.verifyLeft = 0;
+        b.verifyPreviousLimit = 0;
+        b.verifyReference = 0.0;
+        b.verifyWorst = 0.0;
+    }
+
+    void BdCutStepLimit(BdStepBudget& b, double frameSeconds, double previousInterval, int steps)
+    {
+        const int target = static_cast<int>(steps * b.budgetSeconds / frameSeconds);
+        b.verifying = true;
+        b.verifyReference = std::max(frameSeconds, previousInterval);
+        b.verifyPreviousLimit = b.limit;
+        b.verifyLeft = kBeatdropStepBudgetVerifyFrames;
+        b.verifyWorst = 0.0;
+        b.limit = std::max(1, std::min(target, steps - 1));
+        b.overCount = 0;
+        b.probeFrom = 0;
+        b.probeFailed = false;
+        b.binding = false;
+    }
+
+    void BdObserveStepInterval(sv_context* ctx, double frameSeconds)
+    {
+        BdStepBudget& b = ctx->stepBudget;
+        const int steps = b.lastSteps;
+        if (steps < 0)
+            return;
+
+        const double previousInterval = b.previousInterval;
+        b.previousInterval = frameSeconds;
+
+        if (b.verifying)
+        {
+            b.verifyLeft--;
+            if (b.verifyLeft < 2)
+                b.verifyWorst = std::max(b.verifyWorst, frameSeconds);
+            if (b.verifyLeft > 0)
+                return;
+
+            b.verifying = false;
+            if (b.verifyWorst >= kBeatdropStepBudgetResponseRatio * b.verifyReference)
+            {
+                b.budgetSeconds = std::max(b.budgetSeconds, b.verifyWorst);
+                b.limit = b.verifyPreviousLimit;
+                b.overCount = 0;
+                b.settleLeft = kBeatdropStepBudgetSettleFrames;
+                return;
+            }
+
+            if (!b.binding)
+            {
+                b.limit = b.verifyPreviousLimit;
+                b.probeFrom = 0;
+            }
+
+            b.cleanCount = 0;
+            b.probeWait = kBeatdropStepBudgetProbeStartFrames;
+        }
+        else if (b.settleLeft > 0)
+        {
+            b.settleLeft--;
+            return;
+        }
+
+        const bool over = frameSeconds > b.budgetSeconds * kBeatdropStepBudgetMargin;
+
+        if (b.probeFrom > 0 && (steps > b.probeFrom || b.probeLeft < kBeatdropStepBudgetProbeTrialFrames))
+        {
+            if (over)
+            {
+                b.limit = b.probeFrom;
+                b.probeWait = std::min(b.probeWait * 2, kBeatdropStepBudgetProbeMaxFrames);
+                b.probeFailed = true;
+                b.probeFrom = 0;
+                b.settleLeft = kBeatdropStepBudgetSettleFrames;
+            }
+            else
+            {
+                const bool settled = kBeatdropStepBudgetProbeTrialFrames - b.probeLeft >= kBeatdropStepBudgetSettleFrames;
+                const bool headroom = settled && frameSeconds <= b.budgetSeconds * kBeatdropStepBudgetHeadroomRatio;
+                b.probeLeft = headroom ? 0 : b.probeLeft - 1;
+                if (b.probeLeft <= 0)
+                {
+                    b.probeWait = kBeatdropStepBudgetProbeStartFrames;
+                    b.probeFailed = false;
+                    b.probeFrom = 0;
+                }
+            }
+            b.cleanCount = 0;
+            b.overCount = 0;
+            return;
+        }
+
+        if (over)
+        {
+            if (steps > 1)
+            {
+                b.overCount++;
+                if (b.overCount >= kBeatdropStepBudgetOverFrames)
+                {
+                    BdCutStepLimit(b, frameSeconds, previousInterval, steps);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            b.overCount = 0;
+        }
+
+        if (b.budgetSeconds > kBeatdropStepBudgetSeconds && frameSeconds * kBeatdropStepBudgetMargin < b.budgetSeconds)
+        {
+            b.underCount++;
+            if (b.underCount >= 2)
+            {
+                b.budgetSeconds = std::max(kBeatdropStepBudgetSeconds, frameSeconds);
+                b.underCount = 0;
+            }
+        }
+        else
+        {
+            b.underCount = 0;
+        }
+
+        if (b.limit > 0 && b.probeFrom == 0)
+        {
+            b.cleanCount = over ? 0 : b.cleanCount + 1;
+            const bool headroom = !b.probeFailed && frameSeconds <= b.budgetSeconds * kBeatdropStepBudgetHeadroomRatio;
+            if (b.binding && (headroom || b.cleanCount >= b.probeWait))
+            {
+                b.probeFrom = b.limit;
+                b.probeLeft = kBeatdropStepBudgetProbeTrialFrames;
+                b.limit++;
+                b.cleanCount = 0;
+                b.binding = false;
+            }
+        }
+    }
+
+    int BdStepLimit(sv_context* ctx, int wanted)
+    {
+        BdStepBudget& b = ctx->stepBudget;
+        const int ceiling = BdMaxSimulationSteps(ctx);
+        if (ctx->playbackRate < 1.0f)
+            return 1;
+
+        if (b.limit <= 0)
+            return ceiling;
+
+        if (b.limit >= ceiling)
+        {
+            b.limit = 0;
+            b.probeFrom = 0;
+            return ceiling;
+        }
+
+        if (wanted > b.limit)
+            b.binding = true;
+
+        return b.limit;
+    }
+
     int BdTakeSimulationSteps(sv_context* ctx, double frameSeconds, double stepSeconds)
     {
         ctx->stepAccumulator += frameSeconds * static_cast<double>(ctx->playbackRate);
 
-        int steps = static_cast<int>((ctx->stepAccumulator + kBeatdropSimulationStepTolerance * stepSeconds) / stepSeconds);
+        const bool previewing = ctx->playbackRate < 1.0f;
+        const double tolerance = previewing ? kBeatdropWholeStepTolerance : kBeatdropSimulationStepTolerance;
+        int steps = static_cast<int>((ctx->stepAccumulator + tolerance * stepSeconds) / stepSeconds);
 
-        if (ctx->frame == 0 && steps < 1)
+        if ((ctx->frame == 0 || (previewing && BdGlMotionHistoryEmpty(ctx))) && steps < 1)
             steps = 1;
 
-        const int maxSteps = BdMaxSimulationSteps(ctx);
+        const int maxSteps = BdStepLimit(ctx, steps);
         if (steps > maxSteps)
         {
             ctx->stepAccumulator = 0.0;
             return maxSteps;
         }
 
-        ctx->stepAccumulator = std::max(ctx->stepAccumulator - steps * stepSeconds, -kBeatdropSimulationStepTolerance * stepSeconds);
+        const double floor = previewing ? 0.0 : -kBeatdropSimulationStepTolerance * stepSeconds;
+        ctx->stepAccumulator = std::max(ctx->stepAccumulator - steps * stepSeconds, floor);
         return steps;
     }
 
@@ -523,20 +714,164 @@ namespace
             ctx->displayFps = kBeatdropDisplayFpsDamping * ctx->displayFps + (1.0f - kBeatdropDisplayFpsDamping) * measured;
     }
 
+    double BdMotionDisplayPeriod(sv_context* ctx)
+    {
+        return 1.0 / std::max(std::round(static_cast<double>(ctx->displayFps)), 1.0);
+    }
+
+    bool BdFrameOnMotionGrid(sv_context* ctx, double frameSeconds)
+    {
+        const double displayPeriod = BdMotionDisplayPeriod(ctx);
+        return frameSeconds <= (1.0 + kBeatdropMotionGridTolerance) * displayPeriod;
+    }
+
+    double BdMotionFractionStep(sv_context* ctx, double stepSeconds)
+    {
+        return static_cast<double>(ctx->playbackRate) * BdMotionDisplayPeriod(ctx) / stepSeconds;
+    }
+
+    double BdSnapMotionCarry(double carry, double inc)
+    {
+        if (inc >= 1.0)
+            return 0.0;
+
+        double snapped = 0.0;
+        double distance = std::fabs(carry);
+
+        for (int m = 1; m <= kBeatdropMotionLatticeSize; m++)
+        {
+            const double multiple = static_cast<double>(m) * inc;
+            const double lattice = multiple - std::floor(multiple + kBeatdropMotionStepEpsilon);
+
+            if (lattice < 0.0 || lattice >= inc - kBeatdropMotionStepEpsilon)
+                continue;
+
+            if (std::fabs(carry - lattice) < distance)
+            {
+                snapped = lattice;
+                distance = std::fabs(carry - lattice);
+            }
+        }
+
+        return snapped;
+    }
+
+    int BdTakeGridMotionStep(sv_context* ctx, double stepSeconds)
+    {
+        const double inc = BdMotionFractionStep(ctx, stepSeconds);
+        const double reached = ctx->motionFraction + inc;
+
+        if (reached >= 1.0 - kBeatdropMotionStepEpsilon)
+        {
+            ctx->stepAccumulator = BdSnapMotionCarry(std::max(reached - 1.0, 0.0), inc) * stepSeconds;
+            return 1;
+        }
+
+        ctx->stepAccumulator = reached * stepSeconds;
+        return 0;
+    }
+
+    double BdAdvanceMotionFraction(sv_context* ctx, double frameSeconds, double stepSeconds, bool stepped)
+    {
+        if (stepped)
+        {
+            ctx->motionFraction = BdFrameOnMotionGrid(ctx, frameSeconds) ? std::min(std::max(ctx->stepAccumulator / stepSeconds, 0.0), 1.0) : 0.0;
+            ctx->stepAccumulator = ctx->motionFraction * stepSeconds;
+            return BdGlMotionFieldPath(ctx) ? 0.0 : ctx->motionFraction;
+        }
+
+        if (BdFrameOnMotionGrid(ctx, frameSeconds))
+        {
+            ctx->motionFraction += BdMotionFractionStep(ctx, stepSeconds);
+        }
+        else
+        {
+            const double inc = std::max(BdMotionFractionStep(ctx, stepSeconds), kBeatdropMotionStepEpsilon);
+            const double lastPhase = std::max(std::floor((1.0 - kBeatdropMotionStepEpsilon) / inc), 1.0);
+            const double index = std::min(std::max(std::round(ctx->stepAccumulator / stepSeconds / inc), 1.0), lastPhase);
+            ctx->motionFraction = index * inc;
+            ctx->stepAccumulator = ctx->motionFraction * stepSeconds;
+        }
+
+        ctx->motionFraction = std::min(std::max(ctx->motionFraction, 0.0), 1.0);
+        return ctx->motionFraction;
+    }
+
+    bool BdLoadFailureDeferred(sv_context* ctx)
+    {
+        return ctx->playbackRate < 1.0f || BdGlMotionPairOnScreen(ctx);
+    }
+
+    void BdFinishMotionCall(sv_context* ctx, bool loadFailureDeferred)
+    {
+        if (loadFailureDeferred)
+            BdConsumePresetLoadFailure(ctx);
+
+        BdDeliverPresetRequest(ctx);
+    }
+
     void BdRenderFixedStepFrame(sv_context* ctx, double dt_seconds, uint32_t target_fbo)
     {
-        const double frameSeconds = BdHostFrameSeconds(ctx, dt_seconds);
+        bool measured = false;
+        const double frameSeconds = BdHostFrameSeconds(ctx, dt_seconds, measured);
         BdUpdateDisplayFps(ctx, frameSeconds);
 
+        if (ctx->stepBudgetRelearnPending)
+        {
+            ctx->stepBudgetRelearnPending = false;
+            BdRelearnStepBudget(ctx);
+        }
+
+        const bool exiting = ctx->playbackRate >= 1.0f && BdGlMotionPairOnScreen(ctx);
+        const bool loadFailureDeferred = BdLoadFailureDeferred(ctx);
+
+        if (measured && ctx->playbackRate >= 1.0f && !exiting)
+            BdObserveStepInterval(ctx, frameSeconds);
+
         const double stepSeconds = BdSimulationStepSeconds(ctx);
-        const int steps = BdTakeSimulationSteps(ctx, frameSeconds, stepSeconds);
+
+        if (exiting)
+        {
+            ctx->stepBudget.lastSteps = 0;
+            ctx->stepBudget.previousInterval = 0.0;
+            ctx->stepAccumulator += frameSeconds * static_cast<double>(ctx->playbackRate);
+            const int consumed = static_cast<int>((ctx->stepAccumulator + kBeatdropSimulationStepTolerance * stepSeconds) / stepSeconds);
+            ctx->stepAccumulator = std::max(ctx->stepAccumulator - consumed * stepSeconds, -kBeatdropSimulationStepTolerance * stepSeconds);
+            BdGlPlayOutMotionPair(ctx, target_fbo);
+            BdFinishMotionCall(ctx, loadFailureDeferred);
+            return;
+        }
+
+        if (ctx->playbackRate < 1.0f && ctx->frame > 0 && BdGlMotionBuildFrame(ctx, target_fbo))
+        {
+            ctx->stepAccumulator = 0.0;
+            ctx->motionFraction = 0.0;
+            BdFinishMotionCall(ctx, loadFailureDeferred);
+            return;
+        }
+
+        const bool entering = ctx->playbackRate < 1.0f && BdGlMotionHistoryEmpty(ctx);
+        const bool gridStep = ctx->playbackRate < 1.0f && !entering && ctx->frame > 0 && BdFrameOnMotionGrid(ctx, frameSeconds);
+        const int steps = gridStep ? BdTakeGridMotionStep(ctx, stepSeconds) : BdTakeSimulationSteps(ctx, frameSeconds, stepSeconds);
+        ctx->stepBudget.lastSteps = steps;
         ctx->rawClock.SetTickDelta(std::llround(stepSeconds * kBeatdropTicksPerSecond));
 
-        BdAnalyzeAudio(ctx, ctx->displayFps);
-        BdGlBeginFrame(ctx);
+        const bool previewing = ctx->playbackRate < 1.0f;
+
+        if (!previewing || steps > 0)
+        {
+            BdAnalyzeAudio(ctx, previewing ? static_cast<float>(1.0 / stepSeconds) : ctx->displayFps);
+            BdGlBeginFrame(ctx);
+        }
 
         for (int i = 0; i < steps; i++)
         {
+            if (i > 0)
+            {
+                memcpy(ctx->mysound.fWave[0], ctx->sound.fWaveform[0], sizeof(ctx->mysound.fWave[0]));
+                memcpy(ctx->mysound.fWave[1], ctx->sound.fWaveform[1], sizeof(ctx->mysound.fWave[1]));
+            }
+
             BdStepSimulationClock(ctx);
             BdRunFrameEquations(ctx);
 
@@ -545,9 +880,24 @@ namespace
             ctx->frame++;
         }
 
-        BdGlPresentFrame(ctx, target_fbo);
+        if (previewing)
+        {
+            const double fraction = BdAdvanceMotionFraction(ctx, frameSeconds, stepSeconds, steps > 0);
+            const double framesPerStep = stepSeconds / (static_cast<double>(ctx->playbackRate) * BdMotionDisplayPeriod(ctx));
+            BdGlPresentMotionFrame(ctx, target_fbo, steps > 0, static_cast<float>(fraction), static_cast<float>(framesPerStep));
 
-        BdDeliverPresetRequest(ctx);
+            if (entering)
+            {
+                ctx->motionFraction = 1.0 - BdMotionFractionStep(ctx, stepSeconds);
+                ctx->stepAccumulator = ctx->motionFraction * stepSeconds;
+            }
+        }
+        else
+        {
+            BdGlPresentFrame(ctx, target_fbo);
+        }
+
+        BdFinishMotionCall(ctx, loadFailureDeferred);
     }
 
     void BdRestartDebugWindow(sv_context* ctx, double now)
@@ -640,7 +990,12 @@ extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t tar
 
     if (ctx->paused)
     {
-        if (!ctx->deterministic)
+        if (ctx->deterministic)
+            return;
+
+        if (BdGlMotionPairOnScreen(ctx))
+            BdGlRepresentMotionPair(ctx, target_fbo);
+        else
             BdGlPresentFrame(ctx, target_fbo);
         return;
     }
@@ -648,13 +1003,15 @@ extern "C" void sv_render_frame(sv_context* ctx, double dt_seconds, uint32_t tar
     ctx->lastFrameDt = dt_seconds;
     ctx->lastTargetFbo = target_fbo;
 
-    BdConsumePresetLoadFailure(ctx);
-
     if (ctx->deterministic)
     {
+        BdConsumePresetLoadFailure(ctx);
         BdRenderLegacyFrame(ctx, target_fbo);
         return;
     }
+
+    if (!BdLoadFailureDeferred(ctx))
+        BdConsumePresetLoadFailure(ctx);
 
     BdRenderFixedStepFrame(ctx, dt_seconds, target_fbo);
 }

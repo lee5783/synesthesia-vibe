@@ -601,11 +601,16 @@ namespace
 
         BdClearPresetRequestLatch(ctx);
         ctx->resumePending = true;
+        ctx->stepBudgetRelearnPending = true;
 
         ctx->presetVersion = prepared.presetVersion;
         ctx->presetName = prepared.presetName;
         std::string fallbackReason;
         ctx->lastError = BdGlPreparePresetShaders(ctx, prepared.textureDirectory, &prepared.warp, &prepared.comp, &fallbackReason);
+
+        if (blendSeconds < 0.001f)
+            BdGlNoteHardCut(ctx);
+
         BdPublishPresetInfo(ctx, prepared.presetVersion, fallbackReason);
     }
 }
@@ -651,6 +656,7 @@ static sv_status BdLoadPresetFromImpl(sv_context* ctx, const char* path, float b
 
     const float appliedBlendSeconds = BdApplyPresetImport(ctx, nativePath, blend_seconds);
     ctx->resumePending = true;
+    ctx->stepBudgetRelearnPending = true;
 
     if (ctx->hostSink.ErrorCount() > 0)
     {
@@ -681,6 +687,10 @@ static sv_status BdLoadPresetFromImpl(sv_context* ctx, const char* path, float b
 
     std::string fallbackReason;
     ctx->lastError = BdGlPreparePresetShaders(ctx, textureDirectory, nullptr, nullptr, &fallbackReason);
+
+    if (appliedBlendSeconds < 0.001f)
+        BdGlNoteHardCut(ctx);
+
     BdPublishPresetInfo(ctx, ctx->presetVersion, fallbackReason);
 
     if (ctx->gl != nullptr && !ctx->gl->ready)

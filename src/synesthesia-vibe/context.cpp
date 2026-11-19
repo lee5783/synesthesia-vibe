@@ -330,8 +330,12 @@ extern "C" sv_context* sv_create(const sv_config* config)
     ctx->lastTargetFbo = 0;
     ctx->playbackRate = 1.0f;
     ctx->stepAccumulator = 0.0;
+    ctx->motionFraction = 0.0;
     ctx->lastWallSeconds = 0.0;
     ctx->resumePending = false;
+    ctx->stepBudgetRelearnPending = true;
+    ctx->stepBudget = BdStepBudget();
+    ctx->stepBudget.budgetSeconds = ctx->config.max_fps > 0.0f && ctx->config.max_fps < 30.0f ? 1.0 / static_cast<double>(ctx->config.max_fps) : kBeatdropStepBudgetSeconds;
     ctx->displayFps = ctx->fpsHint;
     ctx->limiterLastTime = 0.0f;
 
@@ -473,7 +477,10 @@ extern "C" void sv_resume(sv_context* ctx)
         return;
 
     ctx->paused = false;
-    ctx->stepAccumulator = 0.0;
+
+    if (ctx->playbackRate >= 1.0f)
+        ctx->stepAccumulator = 0.0;
+
     ctx->lastWallSeconds = 0.0;
     ctx->resumePending = true;
     ctx->debugWindowPending = true;
@@ -487,7 +494,11 @@ extern "C" void sv_set_playback_rate(sv_context* ctx, float rate)
     if (!std::isfinite(rate))
         rate = 1.0f;
 
-    ctx->playbackRate = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
+    const float clamped = std::min(std::max(rate, kBeatdropMinPlaybackRate), kBeatdropMaxPlaybackRate);
+    if (clamped != ctx->playbackRate)
+        ctx->stepBudgetRelearnPending = true;
+
+    ctx->playbackRate = clamped;
 }
 
 extern "C" void sv_set_transition_config(sv_context* ctx, const sv_transition_config* config)

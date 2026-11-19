@@ -18,6 +18,20 @@ static NSArray<NSNumber *> *InspectorFrameRates(void)
     return @[ @30, @60, @120, @0 ];
 }
 
+static NSArray<NSNumber *> *InspectorPlaybackRates(void)
+{
+    return @[ @0.25f, @0.5f, @1.0f, @2.0f, @4.0f ];
+}
+
+static NSString *InspectorPlaybackRateTitle(float rate)
+{
+    if (rate == 0.25f)
+        return @"1/4×";
+    if (rate == 0.5f)
+        return @"1/2×";
+    return [NSString stringWithFormat:@"%g×", rate];
+}
+
 static NSArray<NSNumber *> *InspectorAutoIntervals(void)
 {
     return @[ @10, @15, @30, @60 ];
@@ -73,6 +87,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 @property (nonatomic, strong) NSTextField *everyLabel;
 @property (nonatomic, strong) NSArray<NSButton *> *sourceButtons;
 @property (nonatomic, strong) NSPopUpButton *frameRatePopUp;
+@property (nonatomic, strong) NSPopUpButton *playbackRatePopUp;
 @property (nonatomic, strong) NSSwitch *debugSwitch;
 @property (nonatomic, strong) NSMutableArray<NSNumber *> *frameRateOptions;
 
@@ -219,7 +234,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     self.blendPatternPopUp.action = @selector(changeBlendPattern:);
     self.blendPatternPopUp.accessibilityLabel = @"Transition";
 
-    NSTextField *secondsLabel = [NSTextField labelWithString:@"Blend duration"];
+    NSTextField *secondsLabel = [NSTextField labelWithString:@"Blend duration (at 1×)"];
     secondsLabel.textColor = SVColorTokens.textPrimary;
 
     self.blendSecondsPopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
@@ -300,7 +315,20 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 
     NSView *frameRateRow = [self rowWithLeading:frameRateLabel trailing:self.frameRatePopUp];
 
-    NSStackView *column = [NSStackView stackViewWithViews:@[ frameRateRow ]];
+    NSTextField *speedLabel = [NSTextField labelWithString:@"Speed"];
+    speedLabel.textColor = SVColorTokens.textPrimary;
+
+    self.playbackRatePopUp = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSNumber *rate in InspectorPlaybackRates())
+        [self.playbackRatePopUp addItemWithTitle:InspectorPlaybackRateTitle(rate.floatValue)];
+    [self.playbackRatePopUp selectItemAtIndex:2];
+    self.playbackRatePopUp.target = self;
+    self.playbackRatePopUp.action = @selector(changePlaybackRate:);
+    self.playbackRatePopUp.accessibilityLabel = @"Speed";
+
+    NSView *speedRow = [self rowWithLeading:speedLabel trailing:self.playbackRatePopUp];
+
+    NSStackView *column = [NSStackView stackViewWithViews:@[ frameRateRow, speedRow ]];
     column.orientation = NSUserInterfaceLayoutOrientationVertical;
     column.alignment = NSLayoutAttributeLeading;
     column.spacing = 0.0;
@@ -308,7 +336,7 @@ static NSString *InspectorFrameRateTitle(float frameRate)
 
     return [self groupWithTitle:@"Playback"
                            card:[self cardWithContent:column]
-                         footer:@"Frame rate applies live through preferredFramesPerSecond."];
+                         footer:@"Frame rate and speed apply live. Durations in this panel are at 1×."];
 }
 
 - (NSView *)developerGroup
@@ -415,6 +443,15 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     [self.delegate inspectorViewController:self didSelectAudioSourceIndex:sender.tag];
 }
 
+- (void)changePlaybackRate:(NSPopUpButton *)sender
+{
+    NSInteger index = sender.indexOfSelectedItem;
+    NSArray<NSNumber *> *rates = InspectorPlaybackRates();
+    if (index < 0 || (NSUInteger)index >= rates.count)
+        return;
+    [self.delegate inspectorViewController:self didSetPlaybackRate:rates[(NSUInteger)index].floatValue];
+}
+
 - (void)changeFrameRate:(NSPopUpButton *)sender
 {
     NSInteger index = sender.indexOfSelectedItem;
@@ -456,6 +493,17 @@ static NSString *InspectorFrameRateTitle(float frameRate)
     NSUInteger index = [self.frameRateOptions indexOfObject:@(frameRate)];
     if (index != NSNotFound)
         [self.frameRatePopUp selectItemAtIndex:(NSInteger)index];
+}
+
+- (void)setPlaybackRate:(float)playbackRate
+{
+    NSUInteger index = [InspectorPlaybackRates() indexOfObject:@(playbackRate)];
+    if (index == NSNotFound) {
+        [self.playbackRatePopUp addItemWithTitle:InspectorPlaybackRateTitle(playbackRate)];
+        [self.playbackRatePopUp selectItemAtIndex:self.playbackRatePopUp.numberOfItems - 1];
+        return;
+    }
+    [self.playbackRatePopUp selectItemAtIndex:(NSInteger)index];
 }
 
 - (void)setAudioSourceIndex:(NSInteger)index

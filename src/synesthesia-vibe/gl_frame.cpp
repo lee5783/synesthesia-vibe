@@ -34,6 +34,7 @@ namespace
 
     constexpr float kPixelCenterOffsetSignX = 0.9f;
     constexpr float kPixelCenterOffsetSignY = -0.9f;
+    constexpr float kMotionReleaseSeconds = 5.0f;
 
     void BdGlSetPixelCenterOffset(BdGlPipeline* gl, bool enabled, int sizeX, int sizeY)
     {
@@ -433,6 +434,18 @@ namespace
         }
     }
 
+    render_gl::LuminanceLimiterInput BdGlLimiterInput(sv_context* ctx, float presentedTime)
+    {
+        const float dt = std::min(std::max(presentedTime - ctx->limiterLastTime, 0.0f), 0.25f);
+        ctx->limiterLastTime = presentedTime;
+
+        render_gl::LuminanceLimiterInput input;
+        input.maxLuminance = ctx->config.max_luminance;
+        input.flashLimit = ctx->config.flash_limit;
+        input.dtSeconds = dt;
+        return input;
+    }
+
     void BdGlCompositeToTarget(sv_context* ctx, BdGlPipeline* gl, uint32_t targetFbo, render_gl::Texture& compSource,
         render_gl::Texture& noShaderSource)
     {
@@ -442,16 +455,9 @@ namespace
             return;
         }
 
-        const float time = static_cast<float>(ctx->timeModel.GetTime());
-        const float dt = std::min(std::max(time - ctx->limiterLastTime, 0.0f), 0.25f);
-        ctx->limiterLastTime = time;
+        const render_gl::LuminanceLimiterInput input = BdGlLimiterInput(ctx, static_cast<float>(ctx->timeModel.GetTime()));
 
         BdGlStageComposite(ctx, gl, gl->limiter.SceneFramebufferId(), compSource, noShaderSource);
-
-        render_gl::LuminanceLimiterInput input;
-        input.maxLuminance = ctx->config.max_luminance;
-        input.flashLimit = ctx->config.flash_limit;
-        input.dtSeconds = dt;
 
         gl->limiter.Apply(input, targetFbo);
     }
@@ -528,8 +534,6 @@ void BdGlStepFrame(sv_context* ctx)
 
     gl->targets.Swap();
     ctx->framesSinceResize++;
-
-    gl->glErrorCount += render_gl::DrainGlErrors("BdGlStepFrame");
 }
 
 void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo)
@@ -538,9 +542,146 @@ void BdGlPresentFrame(sv_context* ctx, uint32_t targetFbo)
     if (gl == nullptr)
         return;
 
+    gl->interpolator.ResetHistory();
+    gl->pairOnScreen = false;
+
+    if ((gl->interpolator.Valid() || gl->interpolator.Building()) && ++gl->framesSinceMotion > static_cast<int>(kMotionReleaseSeconds * std::max(ctx->displayFps, 1.0f)))
+    {
+        gl->interpolator.Destroy();
+        gl->framesSinceMotion = 0;
+        fprintf(stderr, "synesthesia-vibe: motion interpolator released at frame %d\n", ctx->frame);
+    }
+
     render_gl::SetDefaultDrawState();
     BdGlCompositeToTarget(ctx, gl, targetFbo, gl->targets.Dest().ColorTexture(), gl->targets.Source().ColorTexture());
     gl->presentBlurTexUsed = gl->highestBlurTexUsed;
 
     gl->glErrorCount += render_gl::DrainGlErrors("BdGlPresentFrame");
+}
+
+bool BdGlMotionBuildFrame(sv_context* ctx, uint32_t targetFbo)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr || gl->interpolatorFailed || gl->interpolator.Ready())
+        return false;
+
+    if (!gl->interpolator.Building())
+        gl->interpolator.BeginCreate(ctx->width, ctx->height, gl->flowPixels);
+
+    const render_gl::MotionInterpolator::BuildState state = gl->interpolator.BuildNext();
+
+    if (state == render_gl::MotionInterpolator::BuildState::Failed)
+    {
+        gl->interpolatorFailed = true;
+        fprintf(stderr, "synesthesia-vibe: motion interpolator unavailable, frames hold below 1x\n");
+    }
+    else if (state == render_gl::MotionInterpolator::BuildState::Ready)
+    {
+        fprintf(stderr, "synesthesia-vibe: motion interpolator ready size=%dx%d flow=%dx%d levels=%d\n", ctx->width, ctx->height,
+            gl->interpolator.FlowWidth(), gl->interpolator.FlowHeight(), gl->interpolator.FlowLevels());
+
+        if (!gl->interpolator.FlowValid())
+            fprintf(stderr, "synesthesia-vibe: motion interpolator flow unavailable, cross-fade below 1x\n");
+    }
+
+    BdGlPresentFrame(ctx, targetFbo);
+    gl->framesSinceMotion = 0;
+    return true;
+}
+
+void BdGlNoteHardCut(sv_context* ctx)
+{
+    if (ctx == nullptr || ctx->gl == nullptr)
+        return;
+
+    ctx->gl->interpolator.MarkCut();
+}
+
+bool BdGlMotionHistoryEmpty(sv_context* ctx)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr || gl->interpolatorFailed)
+        return false;
+
+    return !gl->interpolator.HasHistory();
+}
+
+void BdGlPresentMotionFrame(sv_context* ctx, uint32_t targetFbo, bool stepped, float fraction, float framesPerStep)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    if (!gl->interpolator.Ready())
+    {
+        BdGlPresentFrame(ctx, targetFbo);
+        return;
+    }
+
+    render_gl::SetDefaultDrawState();
+    gl->framesSinceMotion = 0;
+
+    if (stepped || !gl->interpolator.HasHistory())
+    {
+        BdGlStageComposite(ctx, gl, gl->interpolator.CaptureFramebufferId(), gl->targets.Dest().ColorTexture(),
+            gl->targets.Source().ColorTexture());
+        gl->interpolator.CommitCapture(static_cast<float>(ctx->timeModel.GetTime()));
+        gl->presentBlurTexUsed = gl->highestBlurTexUsed;
+    }
+
+    const float fieldEnter = 1.95f;
+    const float fieldLeave = 1.8f;
+    gl->motionFieldPath = framesPerStep >= (gl->motionFieldPath ? fieldLeave : fieldEnter);
+
+    if (!gl->limiterEnabled)
+    {
+        gl->interpolator.Present(fraction, targetFbo, gl->motionFieldPath);
+    }
+    else
+    {
+        const render_gl::LuminanceLimiterInput input = BdGlLimiterInput(ctx, gl->interpolator.PresentedTime(fraction));
+
+        gl->interpolator.Present(fraction, gl->limiter.SceneFramebufferId(), gl->motionFieldPath);
+        gl->limiter.Apply(input, targetFbo);
+    }
+
+    render_gl::BindExternalTarget(targetFbo, ctx->width, ctx->height);
+
+    gl->pairOnScreen = true;
+    gl->shownFraction = fraction;
+    gl->shownFramesPerStep = framesPerStep;
+
+    gl->glErrorCount += render_gl::DrainGlErrors("BdGlPresentMotionFrame");
+}
+
+bool BdGlMotionPairOnScreen(sv_context* ctx)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    return gl != nullptr && gl->pairOnScreen && gl->interpolator.HasHistory();
+}
+
+bool BdGlMotionFieldPath(sv_context* ctx)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    return gl != nullptr && gl->motionFieldPath;
+}
+
+void BdGlRepresentMotionPair(sv_context* ctx, uint32_t targetFbo)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    BdGlPresentMotionFrame(ctx, targetFbo, false, gl->shownFraction, gl->shownFramesPerStep);
+}
+
+void BdGlPlayOutMotionPair(sv_context* ctx, uint32_t targetFbo)
+{
+    BdGlPipeline* gl = BdGlReadyPipeline(ctx);
+    if (gl == nullptr)
+        return;
+
+    BdGlPresentMotionFrame(ctx, targetFbo, false, 1.0f, gl->shownFramesPerStep);
+    gl->interpolator.ResetHistory();
+    gl->pairOnScreen = false;
 }

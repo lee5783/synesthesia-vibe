@@ -16,6 +16,7 @@ import android.opengl.GLSurfaceView
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -65,9 +66,10 @@ class VisualizerController(
     initialBlendPattern: Int = BlendPattern.RANDOM,
     initialHardCuts: Boolean = false,
     private val hardCutLoudness: Float = TransitionConfiguration.DEFAULT_HARD_CUT_LOUDNESS,
+    sweepRequest: SweepRequest? = null,
 ) {
 
-    var screen by mutableStateOf(SampleScreen.Visualizer)
+    var screen by mutableStateOf(if (sweepRequest != null) SampleScreen.Fullscreen else SampleScreen.Visualizer)
         private set
     var preset by mutableStateOf(initialPreset)
         private set
@@ -90,6 +92,8 @@ class VisualizerController(
     var autoChangeEnabled by mutableStateOf(initialAutoChangeSeconds > 0f)
         private set
     var autoChangeSeconds by mutableStateOf(if (initialAutoChangeSeconds > 0f) initialAutoChangeSeconds else AUTO_CHANGE_SECONDS)
+        private set
+    var playbackRateSetting by mutableStateOf(initialPlaybackRate)
         private set
     var blendSeconds by mutableStateOf(initialBlendSeconds)
         private set
@@ -134,13 +138,29 @@ class VisualizerController(
         Thread(null, task, "preset-prepare", PREPARE_STACK_BYTES).apply { isDaemon = true }
     }
 
+    private val sweep: SweepRunner? = sweepRequest?.let { request ->
+        SweepRunner(
+            request = request,
+            contextProvider = { renderer.context },
+            prepareExecutor = prepareExecutor,
+            surfaceSize = { surface?.let { it.width to it.height } ?: (0 to 0) },
+            displayHz = { surface?.display?.refreshRate ?: 0f },
+            powerManager = context.getSystemService(PowerManager::class.java),
+            onPreset = { next ->
+                mainHandler.post {
+                    preset = next
+                    loadedPreset = next
+                }
+            },
+        )
+    }
+
     @Volatile
     private var feedsWav = true
 
     @Volatile
     private var lastFeedNanos = 0L
 
-    private var playbackRate = initialPlaybackRate
     private var userPaused = false
     private var lifecyclePaused = false
 
@@ -156,8 +176,16 @@ class VisualizerController(
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = renderer.onSurfaceChanged(gl, width, height)
 
         override fun onDrawFrame(gl: GL10?) {
-            feedWav()
-            renderer.onDrawFrame(gl)
+            val activeSweep = sweep
+            if (activeSweep == null) {
+                feedWav()
+                renderer.onDrawFrame(gl)
+            } else {
+                activeSweep.draw {
+                    feedWav()
+                    renderer.onDrawFrame(gl)
+                }
+            }
         }
     }
 
@@ -239,7 +267,7 @@ class VisualizerController(
                 Log.i(TAG, "context created")
                 glVersion = parseGlVersion(SynesthesiaContext.glStrings())
                 validateRequested()
-                load(renderContext, loadedPreset, 0f)
+                if (sweep != null) sweep.onContext() else load(renderContext, loadedPreset, 0f)
             }
 
             override fun onContextError(error: SynesthesiaException) {
@@ -250,14 +278,16 @@ class VisualizerController(
     )
 
     private fun applyRendererState() {
-        renderer.playbackRate = playbackRate
+        renderer.playbackRate = playbackRateSetting
         renderer.debugInterval = DEBUG_INTERVAL_SECONDS
-        renderer.debugListener = if (debugEnabled) debugListener else null
+        renderer.debugListener = activeDebugListener()
         renderer.transitionConfiguration = transitionConfiguration()
         renderer.blendPattern = blendPattern
         renderer.presetRequestListener = presetRequestListener
         if (userPaused || lifecyclePaused) renderer.pause()
     }
+
+    private fun activeDebugListener(): SynesthesiaContext.DebugListener? = sweep?.debugListener ?: if (debugEnabled) debugListener else null
 
     fun reportError(message: String) {
         errorMessage = message
@@ -348,6 +378,13 @@ class VisualizerController(
         Log.i(TAG, "fps $value")
     }
 
+    fun applyPlaybackRate(value: Float) {
+        if (value == playbackRateSetting) return
+        playbackRateSetting = value
+        renderer.playbackRate = value
+        Log.i(TAG, "playback rate $value")
+    }
+
     fun setAutoChange(enabled: Boolean) {
         autoChangeEnabled = enabled
         applyTransition()
@@ -391,7 +428,7 @@ class VisualizerController(
 
     fun applyDebugEnabled(enabled: Boolean) {
         debugEnabled = enabled
-        renderer.debugListener = if (enabled) debugListener else null
+        renderer.debugListener = activeDebugListener()
         if (!enabled) debugInfo = null
         Log.i(TAG, "debug overlay enabled=$enabled")
     }

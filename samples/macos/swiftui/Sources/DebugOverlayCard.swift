@@ -57,7 +57,9 @@ struct DebugOverlayCard: View {
             row("size", sizeText, truncating: false)
             row("gl", glText, truncating: false)
             row("audio", audioText, truncating: true)
-            row("rate", "1.0× · \(transitionText)", truncating: false)
+            row("rate", rateText, truncating: false)
+            row("speed", reachedText, truncating: false)
+            row("blend", transitionText, truncating: false)
             row("auto", autoText, truncating: false)
         }
     }
@@ -99,6 +101,19 @@ struct DebugOverlayCard: View {
 
     private func normalized(_ value: Float) -> Float {
         min(max(value, 0) / 3, 1)
+    }
+
+    private var rateText: String {
+        guard info != nil else { return "--" }
+        return String(format: "%.2f×", (info?["playback_rate"] as? NSNumber)?.doubleValue ?? 0)
+    }
+
+    private var reachedText: String {
+        guard info != nil else { return "--" }
+        let stepRate = min(max(displayFPS.rounded(), 30), 120)
+        let steps = (info?["sim_steps_per_frame"] as? NSNumber)?.doubleValue ?? 0
+        let reached = steps * displayFPS / stepRate
+        return String(format: "reached %.2f×", reached)
     }
 
     private var displayFPS: Double {

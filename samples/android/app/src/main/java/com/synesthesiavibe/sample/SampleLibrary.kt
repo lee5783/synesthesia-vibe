@@ -27,9 +27,10 @@ class SampleLibrary private constructor(
     val presets: List<Preset>,
     val capturePresets: List<Preset>,
     val defaultWav: File?,
+    private val bundledFolderName: String = BUNDLED_FOLDER,
 ) {
 
-    var folderName: String = BUNDLED_FOLDER
+    var folderName: String = bundledFolderName
         private set
 
     fun preset(key: String): Preset? = presets.firstOrNull { it.matches(key) }
@@ -108,6 +109,7 @@ class SampleLibrary private constructor(
         private const val DEFAULT_WAV = "deterministic-test.wav"
         private const val VERSION_FILE = ".assets-version"
         private const val BUNDLED_FOLDER = "mvp-presets"
+        private const val SET_MANIFEST = "preset-set.json"
         private const val PICKED_FOLDER_DIRECTORY = "picked-presets"
         private const val STAGING_FOLDER_DIRECTORY = "picked-presets-staging"
         private const val PRESET_EXTENSION = "milk"
@@ -124,8 +126,13 @@ class SampleLibrary private constructor(
                 presets = presets(PresetAssets.presetsDirectory(root), emptyMap()),
                 capturePresets = presets(File(captureRoot, CAPTURE_DIRECTORY), ids),
                 defaultWav = File(PresetAssets.audioDirectory(root), DEFAULT_WAV).takeIf { it.isFile },
+                bundledFolderName = bundledSetName(context) ?: BUNDLED_FOLDER,
             )
         }
+
+        private fun bundledSetName(context: Context): String? = runCatching {
+            context.assets.open(SET_MANIFEST).use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) }.optString("name")
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
 
         private fun installCaptureAssets(context: Context, captureRoot: File) {
             val version = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString()

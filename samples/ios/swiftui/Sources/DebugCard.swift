@@ -34,7 +34,9 @@ struct DebugCard: View {
                 row("size", sizeText)
                 row("gl", store.glVersion.isEmpty ? "--" : store.glVersion)
                 row("audio", store.audioLabel)
-                row("rate", "1.0× · \(store.transitionLabel)")
+                row("rate", rateText)
+                row("speed", reachedText)
+                row("blend", store.transitionLabel)
                 row("auto", store.autoText)
             }
             if let error = errorText {
@@ -66,6 +68,16 @@ struct DebugCard: View {
         guard info != nil else { return "-- ms" }
         let fps = number("display_fps")
         return fps > 0 ? String(format: "%.1f ms", 1000 / fps) : "-- ms"
+    }
+
+    private var rateText: String { info == nil ? "--" : String(format: "%.2f×", number("playback_rate")) }
+
+    private var reachedText: String {
+        guard info != nil else { return "--" }
+        let displayFps = number("display_fps")
+        let stepRate = min(max(displayFps.rounded(), 30), 120)
+        let reached = number("sim_steps_per_frame") * displayFps / stepRate
+        return String(format: "reached %.2f×", reached)
     }
 
     private var presetText: String { info == nil ? "--" : text("preset_name") }

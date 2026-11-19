@@ -310,6 +310,7 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
     [self.inspectorViewController setAutoChangeOn:self.isAutoChangeOn interval:self.autoChangeInterval];
     [self.inspectorViewController setBlendPattern:self.blendPattern blendSeconds:self.blendSeconds hardCutsOn:self.isHardCutsOn];
     [self.inspectorViewController setFrameRate:self.visualizerViewController.preferredFramesPerSecond];
+    [self.inspectorViewController setPlaybackRate:self.visualizerViewController.playbackRate];
     [self updateWindowSubtitle];
 }
 
@@ -321,14 +322,14 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
         self.window.subtitle = [NSString stringWithFormat:@"%@ · Auto-change off", position];
         return;
     }
-    self.window.subtitle = [NSString stringWithFormat:@"%@ · Auto-change every %.0f s", position, self.autoChangeInterval];
+    self.window.subtitle = [NSString stringWithFormat:@"%@ · Auto-change every %.0f s at 1×", position, self.autoChangeInterval];
 }
 
 - (NSString *)autoChangeText
 {
     if (!self.isAutoChangeOn)
         return @"off";
-    return [NSString stringWithFormat:@"every %.0f s", self.autoChangeInterval];
+    return [NSString stringWithFormat:@"every %.0f s at 1×", self.autoChangeInterval];
 }
 
 - (void)showError:(nullable NSError *)error
@@ -356,6 +357,14 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
                                     isError:YES];
 }
 
+- (NSString *)rateTextForInfo:(NSDictionary<NSString *, id> *)info displayFPS:(float)displayFPS
+{
+    float reported = info[@"playback_rate"] ? [info[@"playback_rate"] floatValue] : self.visualizerViewController.playbackRate;
+    float cadence = fminf(120.0f, fmaxf(30.0f, roundf(displayFPS)));
+    float reached = [info[@"sim_steps_per_frame"] floatValue] * displayFPS / cadence;
+    return [NSString stringWithFormat:@"%.2f× → %.2f×", reported, reached];
+}
+
 - (void)updateDebugOverlay
 {
     NSDictionary<NSString *, id> *info = self.visualizerViewController.lastDebugInfo ?: @{};
@@ -374,6 +383,7 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
                                                renderScale:self.visualizerViewController.renderScale
                                                       autoChangeText:[self autoChangeText]
                                                       transitionText:SVBlendPatternName(self.blendPattern)
+                                                    rateText:[self rateTextForInfo:info displayFPS:displayFPS]
                                                  lastError:info[@"last_error"]
                                                     levels:self.visualizerViewController.audioLevels];
 }
@@ -485,6 +495,11 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 - (void)inspectorViewController:(InspectorViewController *)controller didSetFrameRate:(float)frameRate
 {
     self.visualizerViewController.preferredFramesPerSecond = frameRate;
+}
+
+- (void)inspectorViewController:(InspectorViewController *)controller didSetPlaybackRate:(float)playbackRate
+{
+    self.visualizerViewController.playbackRate = playbackRate;
 }
 
 - (void)inspectorViewController:(InspectorViewController *)controller didSelectAudioSourceIndex:(NSInteger)index

@@ -23,6 +23,7 @@ final class VisualizerViewController: UIViewController {
 
     private enum PlaybackRow: Int, CaseIterable {
         case frameRate
+        case speed
     }
 
     private enum TransitionRow: Int, CaseIterable {
@@ -38,6 +39,7 @@ final class VisualizerViewController: UIViewController {
     private let autoSwitch = UISwitch()
     private let hardCutSwitch = UISwitch()
     private let debugSwitch = UISwitch()
+    private let speedControl = UISegmentedControl(items: VisualizerSession.playbackRates.map { VisualizerSession.playbackRateLabel($0) })
     private let frameRateControl = UISegmentedControl(items: VisualizerSession.frameRates.map { $0 > 0 ? String(Int($0)) : "Max" })
     private var cancellables: Set<AnyCancellable> = []
 
@@ -125,6 +127,11 @@ final class VisualizerViewController: UIViewController {
         frameRateControl.setTitleTextAttributes([.foregroundColor: DesignTokens.textSecondary], for: .normal)
         frameRateControl.setTitleTextAttributes([.foregroundColor: DesignTokens.textPrimary], for: .selected)
         frameRateControl.addTarget(self, action: #selector(changeFrameRate), for: .valueChanged)
+        speedControl.selectedSegmentTintColor = DesignTokens.surfacePressed
+        speedControl.backgroundColor = DesignTokens.backgroundSecondary
+        speedControl.setTitleTextAttributes([.foregroundColor: DesignTokens.textSecondary], for: .normal)
+        speedControl.setTitleTextAttributes([.foregroundColor: DesignTokens.textPrimary], for: .selected)
+        speedControl.addTarget(self, action: #selector(changePlaybackRate), for: .valueChanged)
     }
 
     private func observeSession() {
@@ -200,6 +207,7 @@ final class VisualizerViewController: UIViewController {
         hardCutSwitch.isOn = session.hardCutsEnabled
         debugSwitch.isOn = session.debugEnabled
         frameRateControl.selectedSegmentIndex = VisualizerSession.frameRates.firstIndex(of: session.fpsSetting) ?? 1
+        speedControl.selectedSegmentIndex = VisualizerSession.playbackRates.firstIndex(of: session.playbackRate) ?? 2
         tableView.reloadData()
     }
 
@@ -218,6 +226,12 @@ final class VisualizerViewController: UIViewController {
         let index = frameRateControl.selectedSegmentIndex
         guard VisualizerSession.frameRates.indices.contains(index) else { return }
         session.fpsSetting = VisualizerSession.frameRates[index]
+    }
+
+    @objc private func changePlaybackRate() {
+        let index = speedControl.selectedSegmentIndex
+        guard VisualizerSession.playbackRates.indices.contains(index) else { return }
+        session.playbackRate = VisualizerSession.playbackRates[index]
     }
 
     @objc private func enterFullScreen() {
@@ -345,14 +359,26 @@ extension VisualizerViewController: UITableViewDataSource, UITableViewDelegate {
                 cell.textLabel?.text = "Frame rate"
                 cell.selectionStyle = .none
                 frameRateControl.translatesAutoresizingMaskIntoConstraints = false
-                let container = UIView()
+                let container = UIView(frame: CGRect(x: 0, y: 0, width: 220, height: 44))
                 container.addSubview(frameRateControl)
                 NSLayoutConstraint.activate([
                     frameRateControl.leadingAnchor.constraint(equalTo: container.leadingAnchor),
                     frameRateControl.trailingAnchor.constraint(equalTo: container.trailingAnchor),
                     frameRateControl.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-                    frameRateControl.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-                    container.widthAnchor.constraint(equalToConstant: 260)
+                    frameRateControl.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
+                ])
+                cell.accessoryView = container
+            case .speed:
+                cell.textLabel?.text = "Speed"
+                cell.selectionStyle = .none
+                speedControl.translatesAutoresizingMaskIntoConstraints = false
+                let container = UIView(frame: CGRect(x: 0, y: 0, width: 220, height: 44))
+                container.addSubview(speedControl)
+                NSLayoutConstraint.activate([
+                    speedControl.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                    speedControl.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                    speedControl.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+                    speedControl.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
                 ])
                 cell.accessoryView = container
             case nil:

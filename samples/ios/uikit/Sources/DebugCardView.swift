@@ -19,6 +19,8 @@ final class DebugCardView: UIView {
     private let glValue = UILabel()
     private let audioValue = UILabel()
     private let rateValue = UILabel()
+    private let speedValue = UILabel()
+    private let blendValue = UILabel()
     private let autoValue = UILabel()
     private let errorLabel = UILabel()
     private let errorValue = UILabel()
@@ -45,7 +47,9 @@ final class DebugCardView: UIView {
         sizeValue.text = String(format: "%d×%d @%.1f", Self.integer(info, "width"), Self.integer(info, "height"), Double(renderScale))
         glValue.text = gl
         audioValue.text = audio
-        rateValue.text = "1.0× · \(transition)"
+        rateValue.text = String(format: "%.2f×", Self.number(info, "playback_rate"))
+        speedValue.text = Self.reachedText(info)
+        blendValue.text = transition
         autoValue.text = auto
         bassBar.value = CGFloat(Self.number(info, "bass")) / 3
         midBar.value = CGFloat(Self.number(info, "mid")) / 3
@@ -65,7 +69,9 @@ final class DebugCardView: UIView {
         sizeValue.text = "--"
         glValue.text = gl
         audioValue.text = audio
-        rateValue.text = "1.0× · \(transition)"
+        rateValue.text = "--"
+        speedValue.text = "--"
+        blendValue.text = transition
         autoValue.text = auto
         bassBar.value = 0
         midBar.value = 0
@@ -82,7 +88,7 @@ final class DebugCardView: UIView {
         layer.borderColor = DesignTokens.overlayBorder.cgColor
         directionalLayoutMargins = .init(top: 10, leading: 12, bottom: 10, trailing: 12)
 
-        for label in [fpsLabel, capLabel, msLabel, presetValue, sizeValue, glValue, audioValue, rateValue, autoValue, errorValue] {
+        for label in [fpsLabel, capLabel, msLabel, presetValue, sizeValue, glValue, audioValue, rateValue, speedValue, blendValue, autoValue, errorValue] {
             label.font = DesignTokens.monoFont(ofSize: 11)
             label.textColor = DesignTokens.textPrimary
             label.adjustsFontSizeToFitWidth = true
@@ -109,6 +115,8 @@ final class DebugCardView: UIView {
             Self.row(label: "gl", value: glValue),
             Self.row(label: "audio", value: audioValue),
             Self.row(label: "rate", value: rateValue),
+            Self.row(label: "speed", value: speedValue),
+            Self.row(label: "blend", value: blendValue),
             Self.row(label: "auto", value: autoValue)
         ])
         grid.axis = .vertical
@@ -150,6 +158,13 @@ final class DebugCardView: UIView {
         row.alignment = .firstBaseline
         name.widthAnchor.constraint(equalToConstant: labelColumn).isActive = true
         return row
+    }
+
+    private static func reachedText(_ info: [String: Any]) -> String {
+        let displayFps = number(info, "display_fps")
+        let stepRate = min(max(displayFps.rounded(), 30), 120)
+        let reached = number(info, "sim_steps_per_frame") * displayFps / stepRate
+        return String(format: "reached %.2f×", reached)
     }
 
     private static func number(_ info: [String: Any], _ key: String) -> Double {
