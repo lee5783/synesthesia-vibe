@@ -11,6 +11,7 @@
 
 #import "SVView.h"
 #import "SVContext+Internal.h"
+#import "SVSyncGroup+Internal.h"
 
 #import <AppKit/AppKit.h>
 #import <CoreVideo/CoreVideo.h>
@@ -122,6 +123,10 @@ namespace
     BOOL _frameRateHintApplied;
     BOOL _surfaceBackingSizeEnabled;
     NSMutableArray<void (^)(CGImageRef _Nullable)> *_snapshotCompletions;
+    SVSyncGroup *_syncGroup;
+    SVSyncScaling _syncScaling;
+    SVSyncPresenter *_syncPresenter;
+    CGSize _contextDrawableSize;
 }
 
 @synthesize context = _context;
@@ -183,6 +188,15 @@ namespace
     [self tearDownDisplayLink];
     [self failPendingSnapshots];
 
+    if (_syncGroup != nil) {
+        [_glContext makeCurrentContext];
+        [_syncPresenter invalidate];
+        SVSyncGroup *group = _syncGroup;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [group refreshMembersWithReason:@"member deallocated"];
+        });
+    }
+
     if (_context != nil) {
         [_glContext makeCurrentContext];
         [_context invalidate];
@@ -208,6 +222,9 @@ namespace
 
 - (nullable SVContext *)context
 {
+    if (_syncGroup != nil)
+        return _syncGroup.context;
+
     if (_context == nil && !_contextFailed)
         [self createContext];
     return _context;
@@ -238,6 +255,7 @@ namespace
     _hasPreferredFramesPerSecond = YES;
     fprintf(stderr, "SVView: preferred frames per second %.2f\n", normalized);
     [self applyPreferredFramesPerSecond];
+    [_syncGroup refreshMembersWithReason:@"member frame rate"];
 }
 
 - (float)playbackRate
@@ -340,10 +358,96 @@ namespace
     fprintf(stderr, "SVView: render scale %.2f\n", clamped);
 }
 
+- (SVSyncGroup *)syncGroup
+{
+    return _syncGroup;
+}
+
+- (void)setSyncGroup:(SVSyncGroup *)syncGroup
+{
+    if (syncGroup == _syncGroup)
+        return;
+
+    if (_syncGroup != nil)
+        [self leaveSyncGroup];
+
+    if (syncGroup != nil)
+        [self joinSyncGroup:syncGroup];
+}
+
+- (SVSyncScaling)syncScaling
+{
+    return _syncScaling;
+}
+
+- (void)setSyncScaling:(SVSyncScaling)syncScaling
+{
+    _syncScaling = syncScaling;
+    fprintf(stderr, "SVView: sync scaling %ld\n", static_cast<long>(syncScaling));
+}
+
+- (BOOL)isSyncMemberRendering
+{
+    return !_effectivelyPaused;
+}
+
+- (void)joinSyncGroup:(SVSyncGroup *)group
+{
+    if (_glContext == nil) {
+        [self reportError:SVMakeError(SVErrorRendererUnavailable, @"renderer unavailable: NSOpenGLContext could not be created")];
+        return;
+    }
+
+    [_glContext makeCurrentContext];
+    NSError *error = nil;
+    SVSyncPresenter *presenter = [[SVSyncPresenter alloc] initWithGroup:group error:&error];
+    if (presenter == nil) {
+        [self reportError:error];
+        return;
+    }
+
+    _syncPresenter = presenter;
+    _syncGroup = group;
+    _contextDrawableSize = self.drawableSize;
+    _needsResize = YES;
+    if (_context != nil && !_effectivelyPaused) {
+        [_context pause];
+        fprintf(stderr, "SVView: sv_pause reason=sync group joined\n");
+    }
+    fprintf(stderr, "SVView: sync group joined\n");
+    [group addMember:self];
+}
+
+- (void)leaveSyncGroup
+{
+    SVSyncGroup *group = _syncGroup;
+    [_glContext makeCurrentContext];
+    [_syncPresenter invalidate];
+    _syncPresenter = nil;
+    _syncGroup = nil;
+    self.drawableSize = _contextDrawableSize;
+    _needsResize = YES;
+    _lastFrameTime = 0.0;
+    _nextFrameDeadline = 0.0;
+    fprintf(stderr, "SVView: sync group left\n");
+    [group removeMember:self];
+
+    if (_context != nil && !_effectivelyPaused) {
+        [_context resume];
+        fprintf(stderr, "SVView: sv_resume reason=sync group left\n");
+    }
+}
+
+- (CGFloat)effectiveRenderScale
+{
+    return _syncGroup != nil ? kMaximumRenderScale : _renderScale;
+}
+
 - (CGSize)backingPixelSize
 {
     NSSize backing = [self convertSizeToBacking:self.bounds.size];
-    return CGSizeMake(MAX(1.0, floor(backing.width * _renderScale)), MAX(1.0, floor(backing.height * _renderScale)));
+    const CGFloat renderScale = [self effectiveRenderScale];
+    return CGSizeMake(MAX(1.0, floor(backing.width * renderScale)), MAX(1.0, floor(backing.height * renderScale)));
 }
 
 - (void)createContext
@@ -423,6 +527,11 @@ namespace
     if (applyFrameRateCap && [self shouldSkipFrameAtTime:CACurrentMediaTime()])
         return;
 
+    if (_syncGroup != nil) {
+        [self renderSyncedFrameApplyingFrameRateCap:applyFrameRateCap];
+        return;
+    }
+
     SVContext *context = self.context;
     if (context == nil) {
         [self failPendingSnapshots];
@@ -457,6 +566,42 @@ namespace
     [_glContext flushBuffer];
 }
 
+- (void)renderSyncedFrameApplyingFrameRateCap:(BOOL)applyFrameRateCap
+{
+    SVSyncGroup *group = _syncGroup;
+    [_glContext makeCurrentContext];
+
+    if (_needsResize)
+        [self applyResize];
+
+    const CFTimeInterval now = CACurrentMediaTime();
+    const NSTimeInterval deltaTime = _lastFrameTime > 0.0 ? now - _lastFrameTime : kDefaultFrameDeltaTime;
+    _lastFrameTime = now;
+
+    if (applyFrameRateCap)
+        [self advanceFrameDeadlineFromTime:now];
+    else
+        [self restartFrameDeadlineFromTime:now];
+
+    id<SVViewDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:@selector(view:willRenderFrameWithDeltaTime:)]) {
+        [group performWithContextCurrent:^{
+            [delegate view:self willRenderFrameWithDeltaTime:deltaTime];
+        }];
+    }
+
+    [group renderFrameForMember:self];
+
+    [_glContext makeCurrentContext];
+    [_syncPresenter presentIntoFramebuffer:0 pixelSize:self.drawableSize scaling:_syncScaling];
+    [self completePendingSnapshots];
+
+    if ([delegate respondsToSelector:@selector(view:didRenderFrameWithDeltaTime:)])
+        [delegate view:self didRenderFrameWithDeltaTime:deltaTime];
+
+    [_glContext flushBuffer];
+}
+
 - (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block
 {
     if (block == nil)
@@ -466,6 +611,11 @@ namespace
         dispatch_sync(dispatch_get_main_queue(), ^{
             [self performWithContextCurrent:block];
         });
+        return;
+    }
+
+    if (_syncGroup != nil) {
+        [_syncGroup performWithContextCurrent:block];
         return;
     }
 
@@ -590,7 +740,7 @@ namespace
     if (cglContext == nullptr)
         return;
 
-    if (_renderScale >= kMaximumRenderScale) {
+    if ([self effectiveRenderScale] >= kMaximumRenderScale) {
         if (_surfaceBackingSizeEnabled) {
             CGLDisable(cglContext, kCGLCESurfaceBackingSize);
             _surfaceBackingSizeEnabled = NO;
@@ -609,6 +759,16 @@ namespace
     CGSize pixels = [self backingPixelSize];
     [self applySurfaceBackingSize:pixels];
     [_glContext update];
+
+    if (_syncGroup != nil) {
+        if (!CGSizeEqualToSize(pixels, self.drawableSize)) {
+            self.drawableSize = pixels;
+            fprintf(stderr, "SVView: sync drawable %dx%d live=%d\n", static_cast<int>(pixels.width), static_cast<int>(pixels.height),
+                    self.inLiveResize ? 1 : 0);
+        }
+        _needsResize = NO;
+        return;
+    }
 
     if (CGSizeEqualToSize(pixels, self.drawableSize)) {
         _needsResize = NO;
@@ -673,6 +833,7 @@ namespace
     NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
     fprintf(stderr, "SVView: display link retarget reason=%s display=%u max=%ld\n", reason.UTF8String, screenNumber.unsignedIntValue,
             static_cast<long>(screen.maximumFramesPerSecond));
+    [_syncGroup refreshMembersWithReason:reason];
 }
 
 - (void)targetCVDisplayLinkToWindowScreen
@@ -771,19 +932,21 @@ namespace
     if (shouldPause) {
         [self stopDisplayLink];
         [self failPendingSnapshots];
-        if (_context != nil) {
+        if (_context != nil && _syncGroup == nil) {
             [_context pause];
             fprintf(stderr, "SVView: sv_pause reason=%s\n", reason.UTF8String);
         }
+        [_syncGroup refreshMembersWithReason:reason];
         return;
     }
 
     _lastFrameTime = 0.0;
     _nextFrameDeadline = 0.0;
-    if (_context != nil) {
+    if (_context != nil && _syncGroup == nil) {
         [_context resume];
         fprintf(stderr, "SVView: sv_resume reason=%s\n", reason.UTF8String);
     }
+    [_syncGroup refreshMembersWithReason:reason];
     [self startDisplayLink];
 }
 

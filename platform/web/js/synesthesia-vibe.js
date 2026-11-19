@@ -11,5 +11,6 @@ export { ResourceLoader } from "./resource-loader.js";
 export { SynesthesiaCanvas } from "./synesthesia-canvas.js";
 export { PreparedPreset, SynesthesiaContext } from "./synesthesia-context.js";
 export { SynesthesiaError } from "./synesthesia-error.js";
+export { SynesthesiaSyncGroup } from "./synesthesia-sync-group.js";
 export { loadSynesthesiaModule } from "./synesthesia-module.js";
 export { WavFeeder } from "./wav-feeder.js";

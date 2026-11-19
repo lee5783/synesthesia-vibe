@@ -7,6 +7,7 @@
 
 import { AudioInput, ResourceLoader, SynesthesiaCanvas, SynesthesiaContext, SynesthesiaError, WavFeeder, loadSynesthesiaModule } from "synesthesia-vibe";
 import { runCapture } from "./capture.js";
+import { SyncDemo } from "./sync-demo.js";
 
 const MANIFEST_URL = "resources/manifest.json";
 const DEFAULT_BLEND_SECONDS = 2;
@@ -40,6 +41,7 @@ class SampleApp {
     #loader = null;
     #module = null;
     #view = null;
+    #syncDemo = null;
     #presets = [];
     #presetIndex = 0;
     #presetName = "";
@@ -75,6 +77,7 @@ class SampleApp {
     }
 
     async run() {
+        this.#syncDemo = this.#createSyncDemo();
         this.#listen();
         this.#fillPatterns();
         this.#seedFps();
@@ -97,6 +100,7 @@ class SampleApp {
             this.#updateAvailability();
             this.#renderSources();
             this.#setPresets(loaded.presets);
+            await this.#startSyncDemo(loaded.presets);
             this.#setLoadStatus("Ready: " + this.#presets.length + " presets, " + (loaded.bytes / 1048576).toFixed(1) + " MB");
             this.#elements.loadPanel.hidden = true;
             this.#loadPreset(0, 0);
@@ -128,7 +132,35 @@ class SampleApp {
 
         this.#view = view;
         this.#glVersion = "";
+        this.#syncDemo?.adoptPrimary(view);
         return view;
+    }
+
+    #createSyncDemo() {
+        const host = {
+            configuration: () => ({ ...this.#configuration, maxFps: this.#fpsSetting() }),
+            onError: error => this.showError(error),
+            currentPreset: () => this.#presets[this.#requestedIndex],
+            manifestUrl: () => MANIFEST_URL,
+            playbackRate: () => this.#playbackRate
+        };
+        const elements = {
+            stage: this.#elements.stage,
+            panel: this.#elements.syncPanel,
+            mirror: this.#elements.syncMirror,
+            toggle: this.#elements.syncToggle,
+            scaling: this.#elements.syncScaling,
+            status: this.#elements.syncStatus
+        };
+        return new SyncDemo(elements, host, new URLSearchParams(location.search).has("syncCompare"));
+    }
+
+    async #startSyncDemo(presets) {
+        try {
+            await this.#syncDemo.start(this.#module, this.#view, presets[1 % presets.length]);
+        } catch (error) {
+            this.showError(error);
+        }
     }
 
     showError(error) {
@@ -350,10 +382,10 @@ class SampleApp {
                     this.#wavFeeder = new WavFeeder(this.#module, this.#wavPath);
                     break;
                 case "microphone":
-                    this.#audioInput = await AudioInput.fromMicrophone(() => this.#view?.context);
+                    this.#audioInput = await AudioInput.fromMicrophone(() => this.#syncDemo?.context ?? this.#view?.context);
                     break;
                 case "system":
-                    this.#audioInput = await AudioInput.fromDisplayCapture(() => this.#view?.context);
+                    this.#audioInput = await AudioInput.fromDisplayCapture(() => this.#syncDemo?.context ?? this.#view?.context);
 
                     if (this.#audioInput === null)
                         throw new SynesthesiaError(SynesthesiaError.SV_ERR_IO, "system sound capture is not supported in this browser");
@@ -410,7 +442,7 @@ class SampleApp {
         const view = this.#view;
 
         try {
-            const timing = await view.loadPreset(path, blendSeconds);
+            const [timing] = await Promise.all([view.loadPreset(path, blendSeconds), this.#syncDemo?.loadPreset(path, blendSeconds)]);
 
             if (serial !== this.#loadSerial || view !== this.#view)
                 return;
@@ -810,6 +842,12 @@ function elementsById() {
     return {
         app: byId("app"),
         canvas: byId("visualizer"),
+        stage: document.querySelector(".stage"),
+        syncPanel: byId("sync-panel"),
+        syncMirror: byId("visualizer-mirror"),
+        syncToggle: byId("sync-toggle"),
+        syncScaling: byId("sync-scaling"),
+        syncStatus: byId("sync-status"),
         visualizerSection: byId("visualizer-section"),
         errorBanner: byId("error-banner"),
         errorText: byId("error-text"),

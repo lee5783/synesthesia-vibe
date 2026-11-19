@@ -7,6 +7,7 @@
 
 #import "SVView.h"
 #import "SVContext+Internal.h"
+#import "SVSyncGroup+Internal.h"
 
 #import <OpenGLES/EAGL.h>
 #import <OpenGLES/EAGLDrawable.h>
@@ -63,9 +64,11 @@ namespace
 {
     SVContextConfiguration *_configuration;
     EAGLContext *_glContext;
+    EAGLContext *_presentContext;
     GLuint _framebuffer;
     GLuint _colorRenderbuffer;
     CADisplayLink *_displayLink;
+    __weak UIScreen *_displayLinkScreen;
     CFTimeInterval _lastFrameTimestamp;
     CFTimeInterval _nextFrameDeadline;
     NSTimeInterval _cappedFrameInterval;
@@ -84,6 +87,10 @@ namespace
     BOOL _applicationActive;
     BOOL _contextPaused;
     BOOL _contextFailed;
+    SVSyncGroup *_syncGroup;
+    SVSyncScaling _syncScaling;
+    SVSyncPresenter *_syncPresenter;
+    CGSize _contextDrawableSize;
 }
 
 #pragma mark - GL context plumbing
@@ -135,7 +142,7 @@ namespace
     glBindFramebuffer(GL_FRAMEBUFFER, _framebuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, _colorRenderbuffer);
 
-    if (![_glContext renderbufferStorage:GL_RENDERBUFFER fromDrawable:(CAEAGLLayer *)self.layer])
+    if (![[self drawableContext] renderbufferStorage:GL_RENDERBUFFER fromDrawable:(CAEAGLLayer *)self.layer])
     {
         [self failWithCode:SVErrorGL message:@"renderbufferStorage:fromDrawable: failed"];
         return NO;
@@ -163,7 +170,37 @@ namespace
 - (void)presentDrawable
 {
     glBindRenderbuffer(GL_RENDERBUFFER, _colorRenderbuffer);
-    [_glContext presentRenderbuffer:GL_RENDERBUFFER];
+    [[self drawableContext] presentRenderbuffer:GL_RENDERBUFFER];
+}
+
+- (EAGLContext *)drawableContext
+{
+    return _presentContext ?: _glContext;
+}
+
+- (BOOL)makeDrawableContextCurrent
+{
+    if (_presentContext == nil)
+        return [self makeGlContextCurrent];
+
+    if ([EAGLContext currentContext] != _presentContext && ![EAGLContext setCurrentContext:_presentContext])
+    {
+        [self failWithCode:SVErrorGL message:@"EAGLContext setCurrentContext failed for the sync present context"];
+        return NO;
+    }
+
+    return YES;
+}
+
+- (void)detachDrawable
+{
+    if (_colorRenderbuffer != 0)
+    {
+        glBindRenderbuffer(GL_RENDERBUFFER, _colorRenderbuffer);
+        [[self drawableContext] renderbufferStorage:GL_RENDERBUFFER fromDrawable:nil];
+    }
+
+    [self destroyDrawable];
 }
 
 - (void)destroyDrawable
@@ -184,7 +221,7 @@ namespace
 
     [EAGLContext setCurrentContext:_glContext];
     [self failPendingSnapshots];
-    [self.context invalidate];
+    [_context invalidate];
     self.context = nil;
     [self destroyDrawable];
     [EAGLContext setCurrentContext:nil];
@@ -228,13 +265,35 @@ namespace
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
     [center addObserver:self selector:@selector(applicationDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [center addObserver:self selector:@selector(screenDidDisconnect:) name:UIScreenDidDisconnectNotification object:nil];
 }
 
 - (void)dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_displayLink invalidate];
+
+    if (_syncGroup != nil)
+    {
+        [EAGLContext setCurrentContext:_presentContext];
+        [_syncPresenter invalidate];
+        [self detachDrawable];
+        _presentContext = nil;
+        SVSyncGroup *group = _syncGroup;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [group refreshMembersWithReason:@"member deallocated"];
+        });
+    }
+
     [self teardownGl];
+}
+
+- (nullable SVContext *)context
+{
+    if (_syncGroup != nil)
+        return _syncGroup.context;
+
+    return _context;
 }
 
 - (SVContextConfiguration *)configuration
@@ -263,6 +322,7 @@ namespace
     _hasPreferredFramesPerSecond = YES;
     fprintf(stderr, "SVView: preferred frames per second %.2f\n", normalized);
     [self applyPreferredFramesPerSecond];
+    [_syncGroup refreshMembersWithReason:@"member frame rate"];
 }
 
 - (float)playbackRate
@@ -278,7 +338,7 @@ namespace
         return;
 
     _playbackRate = normalized;
-    self.context.playbackRate = normalized;
+    _context.playbackRate = normalized;
     fprintf(stderr, "SVView: playback rate %.3f\n", normalized);
 }
 
@@ -290,7 +350,7 @@ namespace
 - (void)setDebugInfoHandler:(void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
 {
     _debugInfoHandler = [debugInfoHandler copy];
-    self.context.debugInfoHandler = _debugInfoHandler;
+    _context.debugInfoHandler = _debugInfoHandler;
 }
 
 - (float)debugInterval
@@ -301,7 +361,7 @@ namespace
 - (void)setDebugInterval:(float)debugInterval
 {
     _debugInterval = debugInterval;
-    self.context.debugInterval = debugInterval;
+    _context.debugInterval = debugInterval;
 }
 
 - (SVTransitionConfiguration *)transitionConfiguration
@@ -312,7 +372,7 @@ namespace
 - (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
 {
     _transitionConfiguration = [transitionConfiguration copy] ?: [[SVTransitionConfiguration alloc] init];
-    self.context.transitionConfiguration = _transitionConfiguration;
+    _context.transitionConfiguration = _transitionConfiguration;
 }
 
 - (NSInteger)blendPattern
@@ -323,7 +383,7 @@ namespace
 - (void)setBlendPattern:(NSInteger)blendPattern
 {
     _blendPattern = blendPattern;
-    self.context.blendPattern = blendPattern;
+    _context.blendPattern = blendPattern;
 }
 
 - (void (^)(SVPresetRequest *))presetRequestHandler
@@ -334,7 +394,7 @@ namespace
 - (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
 {
     _presetRequestHandler = [presetRequestHandler copy];
-    self.context.presetRequestHandler = _presetRequestHandler;
+    _context.presetRequestHandler = _presetRequestHandler;
 }
 
 - (BOOL)debugEnabled
@@ -345,7 +405,7 @@ namespace
 - (void)setDebugEnabled:(BOOL)debugEnabled
 {
     _debugEnabled = debugEnabled;
-    self.context.debugEnabled = debugEnabled;
+    _context.debugEnabled = debugEnabled;
 }
 
 - (CGFloat)renderScale
@@ -361,10 +421,124 @@ namespace
         return;
 
     _renderScale = clamped;
-    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
-    self.contentScaleFactor = screen.nativeScale * _renderScale;
     fprintf(stderr, "SVView: render scale %.2f\n", clamped);
+    [self applyContentScaleFactor];
+}
+
+- (CGFloat)effectiveRenderScale
+{
+    return _syncGroup != nil ? kMaximumRenderScale : _renderScale;
+}
+
+- (void)applyContentScaleFactor
+{
+    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+    self.contentScaleFactor = screen.nativeScale * [self effectiveRenderScale];
     [self setNeedsLayout];
+}
+
+- (SVSyncGroup *)syncGroup
+{
+    return _syncGroup;
+}
+
+- (void)setSyncGroup:(SVSyncGroup *)syncGroup
+{
+    if (syncGroup == _syncGroup)
+        return;
+
+    if (_syncGroup != nil)
+        [self leaveSyncGroup];
+
+    if (syncGroup != nil)
+        [self joinSyncGroup:syncGroup];
+}
+
+- (SVSyncScaling)syncScaling
+{
+    return _syncScaling;
+}
+
+- (void)setSyncScaling:(SVSyncScaling)syncScaling
+{
+    _syncScaling = syncScaling;
+    fprintf(stderr, "SVView: sync scaling %ld\n", static_cast<long>(syncScaling));
+}
+
+- (BOOL)isSyncMemberRendering
+{
+    return [self shouldRun];
+}
+
+- (void)joinSyncGroup:(SVSyncGroup *)group
+{
+    if (![self makeGlContextCurrent])
+        return;
+
+    EAGLContext *presentContext = [group createPresentContext];
+
+    if (presentContext == nil || ![EAGLContext setCurrentContext:presentContext])
+    {
+        [EAGLContext setCurrentContext:_glContext];
+        [self failWithCode:SVErrorRendererUnavailable message:@"renderer unavailable: SVSyncGroup present context could not be created"];
+        return;
+    }
+
+    NSError *error = nil;
+    SVSyncPresenter *presenter = [[SVSyncPresenter alloc] initWithGroup:group error:&error];
+    [EAGLContext setCurrentContext:_glContext];
+
+    if (presenter == nil)
+    {
+        [self reportError:error];
+        return;
+    }
+
+    _contextDrawableSize = self.drawableSize;
+    [self detachDrawable];
+    _presentContext = presentContext;
+    _syncPresenter = presenter;
+    _syncGroup = group;
+
+    if (_context != nil && !_contextPaused)
+    {
+        [_context pause];
+        _contextPaused = YES;
+        fprintf(stderr, "SVView: sv_pause reason=sync group joined\n");
+    }
+
+    fprintf(stderr, "SVView: sync group joined\n");
+    [self applyContentScaleFactor];
+
+    if ([self shouldRun])
+        [self updateDrawable];
+
+    [group addMember:self];
+}
+
+- (void)leaveSyncGroup
+{
+    SVSyncGroup *group = _syncGroup;
+
+    [EAGLContext setCurrentContext:_presentContext];
+    [_syncPresenter invalidate];
+    [self detachDrawable];
+    [EAGLContext setCurrentContext:_glContext];
+    _presentContext = nil;
+    _syncPresenter = nil;
+    _syncGroup = nil;
+    self.drawableSize = _contextDrawableSize;
+    _lastFrameTimestamp = 0;
+    _nextFrameDeadline = 0;
+    fprintf(stderr, "SVView: sync group left\n");
+    [group removeMember:self];
+    [self applyContentScaleFactor];
+
+    if ([self shouldRun])
+    {
+        [self updateDrawable];
+        [self resumeContext];
+    }
 }
 
 - (void)setPaused:(BOOL)paused
@@ -381,8 +555,9 @@ namespace
     [super didMoveToWindow];
 
     if (self.window != nil)
-        self.contentScaleFactor = self.window.screen.nativeScale * _renderScale;
+        self.contentScaleFactor = self.window.screen.nativeScale * [self effectiveRenderScale];
 
+    [self retargetDisplayLinkWithReason:@"window changed"];
     [self updateRunningState];
 }
 
@@ -406,6 +581,12 @@ namespace
     [self updateRunningState];
 }
 
+- (void)screenDidDisconnect:(NSNotification *)notification
+{
+    [self retargetDisplayLinkWithReason:@"screen disconnected"];
+    [self updateRunningState];
+}
+
 #pragma mark - Running state
 
 - (BOOL)shouldRun
@@ -418,7 +599,8 @@ namespace
     if ([self shouldRun])
     {
         [self updateDrawable];
-        [self resumeContext];
+        if (_syncGroup == nil)
+            [self resumeContext];
         [self startDisplayLink];
     }
     else
@@ -427,6 +609,8 @@ namespace
         [self pauseContext];
         [self failPendingSnapshots];
     }
+
+    [_syncGroup refreshMembersWithReason:[self runningStateReason]];
 }
 
 - (NSString *)runningStateReason
@@ -444,20 +628,20 @@ namespace
 
 - (void)pauseContext
 {
-    if (self.context == nil || _contextPaused)
+    if (_context == nil || _contextPaused)
         return;
 
-    [self.context pause];
+    [_context pause];
     _contextPaused = YES;
     fprintf(stderr, "SVView: sv_pause reason=%s\n", [self runningStateReason].UTF8String);
 }
 
 - (void)resumeContext
 {
-    if (self.context == nil || !_contextPaused)
+    if (_context == nil || !_contextPaused)
         return;
 
-    [self.context resume];
+    [_context resume];
     _contextPaused = NO;
     fprintf(stderr, "SVView: sv_resume reason=%s\n", [self runningStateReason].UTF8String);
 }
@@ -467,10 +651,14 @@ namespace
     if (_displayLink != nil)
         return;
 
-    _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(displayLinkDidFire:)];
+    UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+    _displayLink = [screen displayLinkWithTarget:self selector:@selector(displayLinkDidFire:)];
+    _displayLinkScreen = screen;
     [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     _lastFrameTimestamp = 0;
     _nextFrameDeadline = 0;
+    fprintf(stderr, "SVView: display link screen=%s max=%ld\n", screen == UIScreen.mainScreen ? "main" : "external",
+            static_cast<long>(screen.maximumFramesPerSecond));
     [self applyFrameRateCapToDisplayLink];
 }
 
@@ -478,6 +666,19 @@ namespace
 {
     [_displayLink invalidate];
     _displayLink = nil;
+    _displayLinkScreen = nil;
+}
+
+- (void)retargetDisplayLinkWithReason:(NSString *)reason
+{
+    UIScreen *screen = self.window.screen;
+
+    if (_displayLink == nil || screen == nil || screen == _displayLinkScreen)
+        return;
+
+    fprintf(stderr, "SVView: display link retarget reason=%s screen=%s max=%ld\n", reason.UTF8String, screen == UIScreen.mainScreen ? "main" : "external",
+            static_cast<long>(screen.maximumFramesPerSecond));
+    [self stopDisplayLink];
 }
 
 - (void)applyPreferredFramesPerSecond
@@ -545,7 +746,7 @@ namespace
     if (self.bounds.size.width <= 0 || self.bounds.size.height <= 0 || _contextFailed)
         return;
 
-    if (![self makeGlContextCurrent])
+    if (![self makeDrawableContextCurrent])
         return;
 
     const CGSize previousSize = self.drawableSize;
@@ -553,7 +754,10 @@ namespace
     if (![self rebuildDrawable])
         return;
 
-    if (self.context == nil)
+    if (_syncGroup != nil)
+        return;
+
+    if (_context == nil)
     {
         [self createContext];
         return;
@@ -564,12 +768,12 @@ namespace
 
     const NSInteger width = (NSInteger)self.drawableSize.width;
     const NSInteger height = (NSInteger)self.drawableSize.height;
-    NSString *errorBefore = self.context.lastErrorMessage;
-    [self.context resizeToWidth:width height:height];
+    NSString *errorBefore = _context.lastErrorMessage;
+    [_context resizeToWidth:width height:height];
     fprintf(stderr, "SVView: sv_resize %ldx%ld backing pixels bounds=%.0fx%.0f scale=%.2f\n", static_cast<long>(width), static_cast<long>(height),
             self.bounds.size.width, self.bounds.size.height, self.contentScaleFactor);
 
-    NSString *errorAfter = self.context.lastErrorMessage;
+    NSString *errorAfter = _context.lastErrorMessage;
 
     if (errorAfter != nil && ![errorAfter isEqualToString:errorBefore ?: @""] && [errorAfter hasSuffix:@"resize failed"])
         [self reportError:[NSError errorWithDomain:SVErrorDomain code:SVErrorGL userInfo:@{ NSLocalizedDescriptionKey: errorAfter }]];
@@ -642,18 +846,53 @@ namespace
     if (deltaTime <= 0 || deltaTime > maxFrameInterval)
         deltaTime = kDefaultFrameInterval;
 
+    if (_syncGroup != nil)
+    {
+        [self renderSyncedFrameWithDeltaTime:deltaTime];
+        return;
+    }
+
     if ([self.delegate respondsToSelector:@selector(view:willRenderFrameWithDeltaTime:)])
         [self.delegate view:self willRenderFrameWithDeltaTime:deltaTime];
 
-    if (self.context == nil || ![self shouldRun])
+    if (_context == nil || ![self shouldRun])
         return;
 
-    [self.context renderFrameWithDeltaTime:deltaTime targetFramebuffer:_framebuffer];
+    [_context renderFrameWithDeltaTime:deltaTime targetFramebuffer:_framebuffer];
     glBindFramebuffer(GL_FRAMEBUFFER, _framebuffer);
     [self completePendingSnapshots];
 
     if ([self.delegate respondsToSelector:@selector(view:didRenderFrameWithDeltaTime:)])
         [self.delegate view:self didRenderFrameWithDeltaTime:deltaTime];
+
+    [self presentDrawable];
+}
+
+- (void)renderSyncedFrameWithDeltaTime:(NSTimeInterval)deltaTime
+{
+    SVSyncGroup *group = _syncGroup;
+    id<SVViewDelegate> delegate = self.delegate;
+
+    if ([delegate respondsToSelector:@selector(view:willRenderFrameWithDeltaTime:)])
+    {
+        [group performWithContextCurrent:^{
+            [delegate view:self willRenderFrameWithDeltaTime:deltaTime];
+        }];
+    }
+
+    if (_syncGroup != group || ![self shouldRun])
+        return;
+
+    [group renderFrameForMember:self];
+
+    if (![self makeDrawableContextCurrent])
+        return;
+
+    [_syncPresenter presentIntoFramebuffer:_framebuffer pixelSize:self.drawableSize scaling:_syncScaling];
+    [self completePendingSnapshots];
+
+    if ([delegate respondsToSelector:@selector(view:didRenderFrameWithDeltaTime:)])
+        [delegate view:self didRenderFrameWithDeltaTime:deltaTime];
 
     [self presentDrawable];
 }
@@ -668,6 +907,12 @@ namespace
         dispatch_sync(dispatch_get_main_queue(), ^{
             [self performWithContextCurrent:block];
         });
+        return;
+    }
+
+    if (_syncGroup != nil)
+    {
+        [_syncGroup performWithContextCurrent:block];
         return;
     }
 

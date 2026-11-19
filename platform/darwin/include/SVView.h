@@ -17,8 +17,15 @@
 #import "SVContext.h"
 #import "SVContextConfiguration.h"
 #import "SVTransitionConfiguration.h"
+#import "SVSyncGroup.h"
 
 NS_ASSUME_NONNULL_BEGIN
+
+typedef NS_ENUM(NSInteger, SVSyncScaling) {
+    SVSyncScalingFill = 0,
+    SVSyncScalingFit = 1,
+    SVSyncScalingStretch = 2
+};
 
 @class SVView;
 
@@ -52,6 +59,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) SVTransitionConfiguration *transitionConfiguration;
 @property (nonatomic, assign) NSInteger blendPattern;
 @property (nonatomic, copy, nullable) void (^presetRequestHandler)(SVPresetRequest *request);
+@property (nonatomic, strong, nullable) SVSyncGroup *syncGroup;
+@property (nonatomic, assign) SVSyncScaling syncScaling;
 
 - (void)performWithContextCurrent:(void (NS_NOESCAPE ^)(void))block;
 - (void)snapshotWithCompletion:(void (^)(CGImageRef _Nullable image))completion;

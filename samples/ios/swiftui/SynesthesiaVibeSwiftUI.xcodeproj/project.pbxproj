@@ -15,6 +15,7 @@
 		99100461D4769C859CA23620 /* SynesthesiaVibeSwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F3E9844BED655A76065844 /* SynesthesiaVibeSwiftUIApp.swift */; };
 		A0FE2B4DE23FCC940F446928 /* CaptureRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4D493B45D06EE1361E7D67 /* CaptureRunner.swift */; };
 		B2A767167596E1B472E77C0D /* PresetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */; };
+		BB538545BB878486D0B9E013 /* SyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4037F99F9FCE137C679C2F0D /* SyncStore.swift */; };
 		C612DA5F650B13DF1B62DF38 /* VisualizerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */; };
 		D7EF179428AA508F92C8FDF5 /* CaptureRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832437F3844A824D917C1765 /* CaptureRequest.swift */; };
 		EC4DE008D6F419F944E6CDB5 /* VisualizerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13E6669BD6DCE52979C61C9 /* VisualizerStore.swift */; };
@@ -25,6 +26,7 @@
 		0EA285D9E0DA6683519C6480 /* DebugCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugCard.swift; sourceTree = "<group>"; };
 		13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerRootView.swift; sourceTree = "<group>"; };
 		2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetLibrary.swift; sourceTree = "<group>"; };
+		4037F99F9FCE137C679C2F0D /* SyncStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStore.swift; sourceTree = "<group>"; };
 		6C9610ABC384972D72FCA20D /* SynesthesiaVibeSwiftUI.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SynesthesiaVibeSwiftUI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		832437F3844A824D917C1765 /* CaptureRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRequest.swift; sourceTree = "<group>"; };
 		8D0F395F59A9C43C0B8A5F37 /* darwin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = darwin; path = ../../../platform/darwin; sourceTree = SOURCE_ROOT; };
@@ -83,6 +85,7 @@
 				0EA285D9E0DA6683519C6480 /* DebugCard.swift */,
 				EA8455387F2FC7BC8DF81437 /* DesignTokens.swift */,
 				2F3D8CC9D2B4E38FF780D897 /* PresetLibrary.swift */,
+				4037F99F9FCE137C679C2F0D /* SyncStore.swift */,
 				A2F3E9844BED655A76065844 /* SynesthesiaVibeSwiftUIApp.swift */,
 				950BB2C59CE23B2F5B4E0EE2 /* VisualizerCanvas.swift */,
 				13976EBFCDE37319AD74F169 /* VisualizerRootView.swift */,
@@ -189,6 +192,7 @@
 				36075BE268586820227E2F79 /* DebugCard.swift in Sources */,
 				65A5825A6984487094F5B249 /* DesignTokens.swift in Sources */,
 				B2A767167596E1B472E77C0D /* PresetLibrary.swift in Sources */,
+				BB538545BB878486D0B9E013 /* SyncStore.swift in Sources */,
 				99100461D4769C859CA23620 /* SynesthesiaVibeSwiftUIApp.swift in Sources */,
 				06455D7A9303907804B3E774 /* VisualizerCanvas.swift in Sources */,
 				C612DA5F650B13DF1B62DF38 /* VisualizerRootView.swift in Sources */,

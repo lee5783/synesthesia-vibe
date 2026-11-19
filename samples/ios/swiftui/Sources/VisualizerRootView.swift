@@ -27,7 +27,7 @@ struct VisualizerRootView: View {
     }
 
     var body: some View {
-        VisualizerScreen(store: store)
+        VisualizerScreen(store: store, sync: store.sync)
             .preferredColorScheme(.dark)
             .tint(DesignTokens.accentText)
     }

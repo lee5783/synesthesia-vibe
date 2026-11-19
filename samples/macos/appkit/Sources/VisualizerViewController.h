@@ -49,6 +49,7 @@ typedef NS_ENUM(NSInteger, VisualizerAudioSource) {
 @property (nonatomic, assign) NSInteger blendPattern;
 @property (nonatomic, assign) float blendSeconds;
 @property (nonatomic, copy, nullable) void (^presetRequestHandler)(SVPresetRequest *request);
+@property (nonatomic, strong, nullable) SVSyncGroup *syncGroup;
 
 - (void)loadPresetAtURL:(NSURL *)url;
 - (void)loadPresetAtURL:(NSURL *)url blendSeconds:(float)blendSeconds;

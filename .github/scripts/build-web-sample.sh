@@ -23,7 +23,7 @@ USAGE
   Runs from any working directory. Calls platform/web/build-web.sh (the library packaging,
   build/web/dist/), then recreates build/samples/web/:
 
-    index.html main.js capture.js styles.css   copied from samples/web/
+    index.html main.js sync-demo.js capture.js styles.css   copied from samples/web/
     lib/                                       build/web/dist/ (the import map points here)
     resources/presets/                         resources/mvp-presets/*.milk
     resources/capture-presets/                 resources/beatdrop/capture-presets/*.milk
@@ -106,7 +106,7 @@ fail() {
 
 command -v python3 >/dev/null 2>&1 || fail "python3 is required to generate the manifests"
 
-for input in "$SAMPLE_DIR/index.html" "$SAMPLE_DIR/main.js" "$SAMPLE_DIR/capture.js" "$SAMPLE_DIR/styles.css" "$CAPTURE_SET" "$WAV"; do
+for input in "$SAMPLE_DIR/index.html" "$SAMPLE_DIR/main.js" "$SAMPLE_DIR/sync-demo.js" "$SAMPLE_DIR/capture.js" "$SAMPLE_DIR/styles.css" "$CAPTURE_SET" "$WAV"; do
   [[ -f "$input" ]] || fail "missing $input"
 done
 for input in "$MVP_PRESETS" "$CAPTURE_PRESETS" "$TEXTURES"; do
@@ -124,7 +124,7 @@ log "assembling $OUT"
 rm -rf "$OUT"
 mkdir -p "$OUT/lib" "$RESOURCES/presets" "$RESOURCES/capture-presets" "$RESOURCES/textures" "$RESOURCES/audio"
 
-cp "$SAMPLE_DIR/index.html" "$SAMPLE_DIR/main.js" "$SAMPLE_DIR/capture.js" "$SAMPLE_DIR/styles.css" "$OUT/"
+cp "$SAMPLE_DIR/index.html" "$SAMPLE_DIR/main.js" "$SAMPLE_DIR/sync-demo.js" "$SAMPLE_DIR/capture.js" "$SAMPLE_DIR/styles.css" "$OUT/"
 cp "$DIST"/* "$OUT/lib/"
 find "$MVP_PRESETS" -maxdepth 1 -type f -name '*.milk' -exec cp {} "$RESOURCES/presets/" \;
 find "$CAPTURE_PRESETS" -maxdepth 1 -type f -name '*.milk' -exec cp {} "$RESOURCES/capture-presets/" \;
