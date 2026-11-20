@@ -92,6 +92,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.synesthesiavibe.BlendPattern
+import com.synesthesiavibe.SyncScaling
 
 private val PlaybackRateOptions = listOf(
     0.25f to "1/4×",
@@ -110,6 +111,9 @@ private val FpsOptions = listOf(
 
 private val AutoChangeOptions = listOf(10f, 15f, 30f, 60f, 120f)
 private const val DISABLED_ALPHA = 0.45f
+private const val WIDE_ASPECT_RATIO = 2f
+private const val SECOND_VIEW_SQUARE = "Square"
+private const val SECOND_VIEW_WIDE = "Wide"
 
 @Composable
 fun SampleApp(
@@ -197,6 +201,7 @@ private fun VisualizerScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             VisualizerSurface(controller = controller, fillScreen = false)
+            if (controller.secondViewEnabled) SecondVisualizerSurface(controller)
             NowPlayingBar(controller)
             ListItem(
                 headlineContent = { Text("Playlist", color = SvColors.TextPrimary) },
@@ -243,6 +248,35 @@ private fun VisualizerScreen(
             Spacer(Modifier.height(20.dp))
             BlendDurationRow(controller)
             TransitionRow(controller)
+            Spacer(Modifier.height(24.dp))
+            SectionDivider()
+            SectionHeader("Multi-display")
+            SwitchRow(
+                title = "Second view",
+                supporting = "Adds a second visualizer under the first one",
+                checked = controller.secondViewEnabled,
+                onCheckedChange = controller::applySecondView,
+            )
+            SwitchRow(
+                title = "Sync visuals",
+                supporting = "Both views mirror one shared render",
+                checked = controller.syncVisuals,
+                onCheckedChange = controller::applySyncVisuals,
+            )
+            DropdownRow(
+                label = "Scaling",
+                value = SyncScaling.name(controller.syncScaling),
+                options = SyncScaling.names().toList(),
+                enabled = true,
+                onSelected = { picked -> controller.applySyncScaling(SyncScaling.names().indexOf(picked)) },
+            )
+            DropdownRow(
+                label = "Second view shape",
+                value = if (controller.secondViewWide) SECOND_VIEW_WIDE else SECOND_VIEW_SQUARE,
+                options = listOf(SECOND_VIEW_SQUARE, SECOND_VIEW_WIDE),
+                enabled = controller.secondViewEnabled,
+                onSelected = { picked -> controller.applySecondViewWide(picked == SECOND_VIEW_WIDE) },
+            )
             Spacer(Modifier.height(24.dp))
             SectionDivider()
             SectionHeader("Developer")
@@ -823,6 +857,27 @@ private fun VisualizerSurface(controller: VisualizerController, fillScreen: Bool
                     .padding(top = if (fillScreen) 100.dp else 12.dp, start = 16.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun SecondVisualizerSurface(controller: VisualizerController) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(if (controller.secondViewWide) WIDE_ASPECT_RATIO else 1f),
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { contextValue ->
+                object : GLSurfaceView(contextValue) {
+                    override fun onDetachedFromWindow() {
+                        controller.detachSecond(this)
+                        super.onDetachedFromWindow()
+                    }
+                }.also(controller::attachSecond)
+            },
+        )
     }
 }
 

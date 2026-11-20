@@ -33,6 +33,7 @@ let package = Package(
                 .linkedFramework("OpenGL", .when(platforms: [.macOS])),
                 .linkedFramework("CoreAudio", .when(platforms: [.macOS])),
                 .linkedFramework("CoreVideo", .when(platforms: [.macOS])),
+                .linkedFramework("IOSurface", .when(platforms: [.macOS])),
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("QuartzCore"),
                 .linkedLibrary("c++")

@@ -49,6 +49,12 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     private int appliedBlendPattern = BlendPattern.RANDOM;
     private volatile SynesthesiaContext.PresetRequestListener presetRequestListener;
     private SynesthesiaContext.PresetRequestListener appliedPresetRequestListener;
+    private volatile SynesthesiaSyncGroup syncGroup;
+    private SynesthesiaSyncGroup appliedSyncGroup;
+    private volatile SynesthesiaSyncGroup.Member member;
+    private volatile int syncScaling = SyncScaling.FILL;
+    private int surfaceWidth;
+    private int surfaceHeight;
     private long lastFrameNanos;
     private long nextDeadlineNanos;
 
@@ -69,42 +75,53 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+        boolean hadContext = context != null;
         releaseLostContext();
+        releaseLostMember();
+        appliedSyncGroup = null;
 
         try {
             SynesthesiaContext.initGl();
-            SynesthesiaContext created = SynesthesiaContext.create(configuration);
 
-            if (paused)
-                created.pause();
-
-            appliedPlaybackRate = playbackRate;
-            created.setPlaybackRate(appliedPlaybackRate);
-            logPlaybackRate(appliedPlaybackRate);
-
-            appliedDebugListener = null;
-            appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
-            applyDebug(created);
-
-            appliedTransitionConfiguration = null;
-            appliedBlendPattern = BlendPattern.RANDOM;
-            appliedPresetRequestListener = null;
-            applyTransition(created);
-
-            lastFrameNanos = 0;
-            nextDeadlineNanos = 0;
-            context = created;
-
-            if (listener != null)
-                listener.onContextCreated(created);
+            if (syncGroup == null || hadContext)
+                createContext();
         } catch (SynesthesiaException error) {
             if (listener != null)
                 listener.onContextError(error);
         }
     }
 
+    private void createContext() throws SynesthesiaException {
+        SynesthesiaContext created = SynesthesiaContext.create(configuration);
+
+        if (paused)
+            created.pause();
+
+        appliedPlaybackRate = playbackRate;
+        created.setPlaybackRate(appliedPlaybackRate);
+        logPlaybackRate(appliedPlaybackRate);
+
+        appliedDebugListener = null;
+        appliedDebugInterval = DEFAULT_DEBUG_INTERVAL;
+        applyDebug(created);
+
+        appliedTransitionConfiguration = null;
+        appliedBlendPattern = BlendPattern.RANDOM;
+        appliedPresetRequestListener = null;
+        applyTransition(created);
+
+        lastFrameNanos = 0;
+        nextDeadlineNanos = 0;
+        context = created;
+
+        if (listener != null)
+            listener.onContextCreated(created);
+    }
+
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
+        surfaceWidth = width;
+        surfaceHeight = height;
         SynesthesiaContext current = context;
 
         if (current != null)
@@ -113,6 +130,9 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
     @Override
     public void onDrawFrame(GL10 gl) {
+        if ((member != null || syncGroup != appliedSyncGroup) && drawGrouped())
+            return;
+
         SynesthesiaContext current = context;
 
         if (current == null)
@@ -182,8 +202,33 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         presetRequestListener = listener;
     }
 
+    public SynesthesiaSyncGroup getSyncGroup() {
+        return syncGroup;
+    }
+
+    public void setSyncGroup(SynesthesiaSyncGroup group) {
+        syncGroup = group;
+        SynesthesiaSyncGroup.Member grouped = member;
+
+        if (grouped != null && !grouped.belongsTo(group))
+            grouped.detach();
+    }
+
+    public int getSyncScaling() {
+        return syncScaling;
+    }
+
+    public void setSyncScaling(int scaling) {
+        syncScaling = scaling;
+    }
+
     public void pause() {
         paused = true;
+        SynesthesiaSyncGroup.Member grouped = member;
+
+        if (grouped != null)
+            grouped.setResumed(false);
+
         SynesthesiaContext current = context;
 
         if (current != null)
@@ -194,6 +239,13 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
         paused = false;
         lastFrameNanos = 0;
         nextDeadlineNanos = 0;
+        SynesthesiaSyncGroup.Member grouped = member;
+
+        if (grouped != null) {
+            grouped.setResumed(true);
+            return;
+        }
+
         SynesthesiaContext current = context;
 
         if (current != null)
@@ -201,6 +253,13 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
     }
 
     public void release() {
+        SynesthesiaSyncGroup.Member grouped = member;
+        member = null;
+        appliedSyncGroup = null;
+
+        if (grouped != null)
+            grouped.leave(false);
+
         SynesthesiaContext current = context;
         context = null;
 
@@ -214,6 +273,116 @@ public final class SynesthesiaRenderer implements GLSurfaceView.Renderer {
 
         if (lost != null)
             lost.closeAfterContextLoss();
+    }
+
+    private void releaseLostMember() {
+        SynesthesiaSyncGroup.Member lost = member;
+        member = null;
+
+        if (lost != null)
+            lost.leave(true);
+    }
+
+    private boolean drawGrouped() {
+        SynesthesiaSyncGroup requested = syncGroup;
+        SynesthesiaSyncGroup.Member current = member;
+
+        if (requested != appliedSyncGroup || (current != null && current.isDetached()))
+            applySyncGroup(requested);
+
+        SynesthesiaSyncGroup.Member grouped = member;
+
+        if (grouped == null)
+            return false;
+
+        int status = grouped.present(surfaceWidth, surfaceHeight, syncScaling);
+
+        if (status == SynesthesiaSyncGroup.PRESENT_DRAWN)
+            return true;
+
+        if (status == SynesthesiaSyncGroup.PRESENT_NO_FRAME)
+            return grouped.hasPresented() || context == null;
+
+        String error = grouped.lastError();
+        leaveGroup(grouped);
+
+        if (status == SynesthesiaSyncGroup.PRESENT_FAILED)
+            reportError(new SynesthesiaException(SynesthesiaException.SV_ERR_GL, error));
+
+        resumeOwnContext();
+        return false;
+    }
+
+    private void applySyncGroup(SynesthesiaSyncGroup requested) {
+        appliedSyncGroup = requested;
+        SynesthesiaSyncGroup.Member grouped = member;
+
+        if (grouped != null)
+            leaveGroup(grouped);
+
+        if (requested == null || !joinGroup(requested))
+            resumeOwnContext();
+    }
+
+    private boolean joinGroup(SynesthesiaSyncGroup group) {
+        SynesthesiaSyncGroup.Member joined;
+
+        try {
+            joined = group.join(surfaceWidth, surfaceHeight, !paused);
+        } catch (SynesthesiaException error) {
+            Log.w(LOG_TAG, "SynesthesiaRenderer sync group join failed on " + Thread.currentThread().getName() + ": " + error.getMessage());
+            reportError(error);
+            return false;
+        }
+
+        member = joined;
+        joined.setResumed(!paused);
+        SynesthesiaContext current = context;
+
+        if (current != null)
+            current.pause();
+
+        Log.i(LOG_TAG, "SynesthesiaRenderer joined sync group on " + Thread.currentThread().getName() + " scaling=" + SyncScaling.name(syncScaling));
+        return true;
+    }
+
+    private void leaveGroup(SynesthesiaSyncGroup.Member grouped) {
+        member = null;
+        grouped.leave(false);
+        Log.i(LOG_TAG, "SynesthesiaRenderer left sync group on " + Thread.currentThread().getName());
+    }
+
+    private void resumeOwnContext() {
+        SynesthesiaContext current = context;
+
+        if (current == null) {
+            try {
+                createContext();
+            } catch (SynesthesiaException error) {
+                reportError(error);
+                return;
+            }
+
+            SynesthesiaContext created = context;
+
+            if (surfaceWidth > 0 && surfaceHeight > 0)
+                created.resize(surfaceWidth, surfaceHeight);
+
+            return;
+        }
+
+        if (paused)
+            current.pause();
+        else
+            current.resume();
+
+        lastFrameNanos = 0;
+        nextDeadlineNanos = 0;
+    }
+
+    private void reportError(SynesthesiaException error) {
+        if (listener != null)
+            listener.onContextError(error);
     }
 
     private void applyPlaybackRate(SynesthesiaContext current) {

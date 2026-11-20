@@ -1,6 +1,7 @@
 add_library(synesthesiavibe-jni SHARED
   synesthesia_jni.cpp
   wav_feeder_jni.cpp
+  sync_group_jni.cpp
 )
 
 set_target_properties(synesthesiavibe-jni PROPERTIES

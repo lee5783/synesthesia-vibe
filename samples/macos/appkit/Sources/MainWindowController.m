@@ -8,6 +8,7 @@
 #import "MainWindowController.h"
 
 #import "InspectorViewController.h"
+#import "MirrorWindowController.h"
 #import "SampleBundle.h"
 #import "SidebarViewController.h"
 #import "VisualizerContentViewController.h"
@@ -23,6 +24,8 @@ static const float MainWindowDefaultBlendSeconds = 2.0f;
 static const float MainWindowDefaultHardCutLoudness = 2.5f;
 static const NSTimeInterval MainWindowDenialHintSeconds = 4.0;
 static NSString *const MainWindowDefaultPresetName = @"shifter - swarm.milk";
+static const NSUInteger MainWindowSyncSnapshotAttempts = 12;
+static const NSTimeInterval MainWindowDefaultSyncSnapshotDelay = 4.0;
 static NSToolbarItemIdentifier const MainWindowTransportItemIdentifier = @"transport";
 static NSToolbarItemIdentifier const MainWindowInspectorItemIdentifier = @"toggleInspector";
 
@@ -39,6 +42,47 @@ static NSString *MainWindowSourceLabel(VisualizerAudioSource source)
         return @"System sound";
     }
     return @"Unknown";
+}
+
+static NSString *MainWindowSyncScalingName(SVSyncScaling scaling)
+{
+    switch (scaling) {
+    case SVSyncScalingFill:
+        return @"fill";
+    case SVSyncScalingFit:
+        return @"fit";
+    case SVSyncScalingStretch:
+        return @"stretch";
+    }
+    return @"fill";
+}
+
+static SVSyncScaling MainWindowSyncScalingFromName(NSString *name)
+{
+    if ([name isEqualToString:@"fit"])
+        return SVSyncScalingFit;
+    if ([name isEqualToString:@"stretch"])
+        return SVSyncScalingStretch;
+    return SVSyncScalingFill;
+}
+
+static BOOL MainWindowImagesIdentical(CGImageRef _Nullable first, CGImageRef _Nullable second)
+{
+    if (first == NULL || second == NULL || CGImageGetWidth(first) != CGImageGetWidth(second) || CGImageGetHeight(first) != CGImageGetHeight(second))
+        return NO;
+
+    NSData *firstData = CFBridgingRelease(CGDataProviderCopyData(CGImageGetDataProvider(first)));
+    NSData *secondData = CFBridgingRelease(CGDataProviderCopyData(CGImageGetDataProvider(second)));
+    return firstData != nil && [firstData isEqualToData:secondData];
+}
+
+static BOOL MainWindowWritePng(CGImageRef _Nullable image, NSURL *url)
+{
+    if (image == NULL)
+        return NO;
+
+    NSData *png = [[[NSBitmapImageRep alloc] initWithCGImage:image] representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    return [png writeToURL:url options:NSDataWritingAtomic error:nil];
 }
 
 static VisualizerAudioSource MainWindowAudioSourceForIndex(NSInteger index)
@@ -87,6 +131,8 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 @property (nonatomic, assign) BOOL isHardCutsOn;
 @property (nonatomic, assign) NSInteger blendPattern;
 @property (nonatomic, assign) float blendSeconds;
+@property (nonatomic, strong, nullable) MirrorWindowController *mirrorWindowController;
+@property (nonatomic, strong, nullable) SVSyncGroup *syncGroup;
 @property (nonatomic, assign) BOOL isDebugOverlayOn;
 @property (nonatomic, assign) double flatLevelSeconds;
 @property (nonatomic, assign) BOOL didShowDenialHint;
@@ -199,6 +245,8 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
     [self updateAudioDenialHint];
     if (self.isDebugOverlayOn)
         [self updateDebugOverlay];
+    if (self.isSyncOn && self.isDebugOverlayOn)
+        [self logSyncDebugInfo];
 }
 
 - (void)applyTransitionConfiguration
@@ -522,6 +570,199 @@ static NSInteger MainWindowIndexForAudioSource(VisualizerAudioSource source)
 - (void)visualizerContentViewControllerDidToggleFullScreen:(VisualizerContentViewController *)controller
 {
     [self.window toggleFullScreen:nil];
+}
+
+#pragma mark - Sync
+
+- (void)showMirrorWindow
+{
+    NSSize contentSize = self.visualizerViewController.visualizerView.bounds.size;
+    if (self.mirrorWindowController == nil) {
+        self.mirrorWindowController = [[MirrorWindowController alloc] initWithConfiguration:self.visualizerViewController.visualizerView.configuration
+                                                                                  presetURL:self.currentPresetURL
+                                                                                contentSize:contentSize];
+        self.mirrorWindowController.visualizerView.syncScaling = self.syncScaling;
+        if (self.isSyncOn)
+            self.mirrorWindowController.visualizerView.syncGroup = self.syncGroup;
+    } else {
+        [self.mirrorWindowController matchContentSize:contentSize];
+    }
+    [self.mirrorWindowController showWindow:nil];
+    NSLog(@"MacAppKitSample: mirror window view=%p content=%.0fx%.0f", (__bridge void *)self.mirrorWindowController.visualizerView, contentSize.width,
+          contentSize.height);
+}
+
+- (void)setSyncOn:(BOOL)syncOn
+{
+    if (syncOn == _syncOn)
+        return;
+
+    if (!syncOn) {
+        _syncOn = NO;
+        self.mirrorWindowController.visualizerView.syncGroup = nil;
+        self.visualizerViewController.syncGroup = nil;
+        NSLog(@"MacAppKitSample: sync off group=%p", (__bridge void *)self.syncGroup);
+        return;
+    }
+
+    [self showMirrorWindow];
+    BOOL created = NO;
+    if (self.syncGroup == nil) {
+        NSError *error = nil;
+        SVSyncGroup *syncGroup = [[SVSyncGroup alloc] initWithConfiguration:self.visualizerViewController.visualizerView.configuration error:&error];
+        if (syncGroup == nil) {
+            NSLog(@"MacAppKitSample: sync group failed %ld: %@", (long)error.code, error.localizedDescription);
+            [self showError:error];
+            return;
+        }
+        self.syncGroup = syncGroup;
+        created = YES;
+    }
+
+    _syncOn = YES;
+    self.visualizerViewController.syncGroup = self.syncGroup;
+    self.mirrorWindowController.visualizerView.syncGroup = self.syncGroup;
+    NSLog(@"MacAppKitSample: sync on group=%p main view=%p mirror view=%p", (__bridge void *)self.syncGroup,
+          (__bridge void *)self.visualizerViewController.visualizerView, (__bridge void *)self.mirrorWindowController.visualizerView);
+    if (created && self.currentPresetURL != nil)
+        [self.visualizerViewController loadPresetAtURL:self.currentPresetURL blendSeconds:0.0f];
+}
+
+- (void)setSyncScaling:(SVSyncScaling)syncScaling
+{
+    _syncScaling = syncScaling;
+    self.visualizerViewController.visualizerView.syncScaling = syncScaling;
+    self.mirrorWindowController.visualizerView.syncScaling = syncScaling;
+    NSLog(@"MacAppKitSample: sync scaling=%@", MainWindowSyncScalingName(syncScaling));
+}
+
+- (void)toggleMainWindowOrderedOut
+{
+    if (self.window.isVisible)
+        [self.window orderOut:nil];
+    else
+        [self.window makeKeyAndOrderFront:nil];
+    NSLog(@"MacAppKitSample: main window %@", self.window.isVisible ? @"ordered front" : @"ordered out");
+}
+
+- (void)saveSyncSnapshotsToDirectory:(NSURL *)directory
+{
+    [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    [self captureSyncSnapshotsToDirectory:directory attempt:1];
+}
+
+- (void)captureSyncSnapshotsToDirectory:(NSURL *)directory attempt:(NSUInteger)attempt
+{
+    SVView *mainView = self.visualizerViewController.visualizerView;
+    SVView *mirrorView = self.mirrorWindowController.visualizerView;
+    if (mirrorView == nil) {
+        NSLog(@"MacAppKitSample: sync snapshots need the mirror window");
+        return;
+    }
+
+    __block id mainImage = nil;
+    __block id mirrorImage = nil;
+    __block NSUInteger pending = 2;
+    __weak MainWindowController *weakSelf = self;
+    void (^finish)(void) = ^{
+        pending -= 1;
+        if (pending > 0)
+            return;
+        [weakSelf finishSyncSnapshotsWithMainImage:(__bridge CGImageRef)mainImage
+                                       mirrorImage:(__bridge CGImageRef)mirrorImage
+                                         directory:directory
+                                           attempt:attempt];
+    };
+    [mainView snapshotWithCompletion:^(CGImageRef image) {
+        mainImage = (__bridge id)image;
+        finish();
+    }];
+    [mirrorView snapshotWithCompletion:^(CGImageRef image) {
+        mirrorImage = (__bridge id)image;
+        finish();
+    }];
+}
+
+- (void)finishSyncSnapshotsWithMainImage:(nullable CGImageRef)mainImage
+                             mirrorImage:(nullable CGImageRef)mirrorImage
+                               directory:(NSURL *)directory
+                                 attempt:(NSUInteger)attempt
+{
+    BOOL identical = MainWindowImagesIdentical(mainImage, mirrorImage);
+    if (!identical && attempt < MainWindowSyncSnapshotAttempts) {
+        __weak MainWindowController *weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf captureSyncSnapshotsToDirectory:directory attempt:attempt + 1];
+        });
+        return;
+    }
+
+    NSURL *mainURL = [directory URLByAppendingPathComponent:@"main.png"];
+    NSURL *mirrorURL = [directory URLByAppendingPathComponent:@"mirror.png"];
+    BOOL written = MainWindowWritePng(mainImage, mainURL) && MainWindowWritePng(mirrorImage, mirrorURL);
+    NSLog(@"MacAppKitSample: sync snapshots attempt=%lu identical=%d synced=%d scaling=%@ main=%zux%zu mirror=%zux%zu written=%d dir=%@",
+          (unsigned long)attempt, identical, self.isSyncOn, MainWindowSyncScalingName(self.syncScaling), CGImageGetWidth(mainImage),
+          CGImageGetHeight(mainImage), CGImageGetWidth(mirrorImage), CGImageGetHeight(mirrorImage), written, directory.path);
+}
+
+- (void)logSyncDebugInfo
+{
+    NSDictionary<NSString *, id> *info = self.visualizerViewController.lastDebugInfo;
+    if (info == nil)
+        return;
+
+    NSLog(@"MacAppKitSample: sync debug frame=%@ display_fps=%@ sim_steps_per_frame=%@ size=%@x%@ render=%.0fx%.0f paused=%d members=%lu",
+          info[@"frame"], info[@"display_fps"], info[@"sim_steps_per_frame"], info[@"width"], info[@"height"], self.syncGroup.renderSize.width,
+          self.syncGroup.renderSize.height, self.syncGroup.isPaused, (unsigned long)self.syncGroup.memberCount);
+}
+
+- (void)applySyncLaunchDefaults
+{
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSString *scaling = [defaults stringForKey:@"SyncScaling"];
+    if (scaling != nil)
+        self.syncScaling = MainWindowSyncScalingFromName(scaling);
+    if ([defaults boolForKey:@"DebugOverlay"])
+        [self setDebugOverlayOn:YES];
+    if ([defaults boolForKey:@"SyncMirror"])
+        [self showMirrorWindow];
+    if ([defaults boolForKey:@"SyncOn"])
+        self.syncOn = YES;
+    double mirrorWidth = [defaults doubleForKey:@"SyncMirrorWidth"];
+    double mirrorHeight = [defaults doubleForKey:@"SyncMirrorHeight"];
+    if (mirrorWidth > 0.0 && mirrorHeight > 0.0)
+        [self.mirrorWindowController matchContentSize:NSMakeSize(mirrorWidth, mirrorHeight)];
+
+    __weak MainWindowController *weakSelf = self;
+    double hideAfter = [defaults doubleForKey:@"SyncHideMainAfter"];
+    if (hideAfter > 0.0) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(hideAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (weakSelf.window.isVisible)
+                [weakSelf toggleMainWindowOrderedOut];
+        });
+    }
+    double showAfter = [defaults doubleForKey:@"SyncShowMainAfter"];
+    if (showAfter > 0.0) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(showAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (!weakSelf.window.isVisible)
+                [weakSelf toggleMainWindowOrderedOut];
+        });
+    }
+    double toggleAfter = [defaults doubleForKey:@"SyncToggleAfter"];
+    if (toggleAfter > 0.0) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(toggleAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            weakSelf.syncOn = !weakSelf.isSyncOn;
+        });
+    }
+    NSString *snapshotDirectory = [defaults stringForKey:@"SyncSnapshotDirectory"];
+    if (snapshotDirectory != nil) {
+        double delay = [defaults doubleForKey:@"SyncSnapshotDelay"];
+        NSURL *directory = [NSURL fileURLWithPath:snapshotDirectory isDirectory:YES];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((delay > 0.0 ? delay : MainWindowDefaultSyncSnapshotDelay) * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [weakSelf saveSyncSnapshotsToDirectory:directory];
+        });
+    }
 }
 
 #pragma mark - VisualizerViewControllerDelegate

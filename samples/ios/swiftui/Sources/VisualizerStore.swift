@@ -47,6 +47,7 @@ final class VisualizerStore: ObservableObject {
 
     let player: SynesthesiaPlayer
     let library: PresetLibrary
+    let sync: SyncStore
 
     @Published private(set) var presets: [Preset]
     @Published private(set) var currentIndex = 0
@@ -109,6 +110,7 @@ final class VisualizerStore: ObservableObject {
         self.folderName = folderName
         self.presets = library.presets
         self.fpsSetting = fps
+        self.sync = SyncStore(player: player, library: library)
         player.preferredFramesPerSecond = fps
         applyTransitionConfiguration()
         player.presetRequestHandler = { [weak self] request in
@@ -144,6 +146,7 @@ final class VisualizerStore: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+        sync.bind(to: self)
     }
 
     deinit {
@@ -224,6 +227,7 @@ final class VisualizerStore: ObservableObject {
     func start() {
         applySource(.wav, revertingTo: nil)
         select(0, blend: 0)
+        sync.applyLaunchDefaults()
     }
 
     func select(_ index: Int, blend: Float? = nil) {

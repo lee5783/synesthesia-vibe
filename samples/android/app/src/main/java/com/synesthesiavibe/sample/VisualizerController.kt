@@ -34,10 +34,14 @@ import com.synesthesiavibe.SynesthesiaConfiguration
 import com.synesthesiavibe.SynesthesiaContext
 import com.synesthesiavibe.SynesthesiaException
 import com.synesthesiavibe.SynesthesiaRenderer
+import com.synesthesiavibe.SynesthesiaSyncGroup
+import com.synesthesiavibe.SyncScaling
 import com.synesthesiavibe.TransitionConfiguration
 import com.synesthesiavibe.WavFeeder
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.microedition.khronos.egl.EGLConfig
@@ -103,6 +107,14 @@ class VisualizerController(
         private set
     var glVersion by mutableStateOf("")
         private set
+    var secondViewEnabled by mutableStateOf(false)
+        private set
+    var secondViewWide by mutableStateOf(false)
+        private set
+    var syncVisuals by mutableStateOf(false)
+        private set
+    var syncScaling by mutableStateOf(SyncScaling.FILL)
+        private set
 
     val showsSystemAudio: Boolean
         get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
@@ -124,10 +136,15 @@ class VisualizerController(
     }
 
     private var renderer: SynesthesiaRenderer = createRenderer(initialFps)
+    private val secondRenderer: SynesthesiaRenderer = createSecondRenderer(initialFps)
     private val wavFeeder: WavFeeder? = library.defaultWav?.let(::WavFeeder)
 
     private var attachedFps: Float? = null
     private var surface: GLSurfaceView? = null
+    private var secondSurface: GLSurfaceView? = null
+
+    @Volatile
+    private var syncGroup: SynesthesiaSyncGroup? = null
     private var liveInput: LiveInput? = null
 
     @Volatile
@@ -241,6 +258,8 @@ class VisualizerController(
     }
 
     fun detach() {
+        stopSyncGroup(reload = false)
+        secondSurface?.let(::detachSecond)
         stopLiveInput()
         requestSequence.incrementAndGet()
         pendingPrepared.getAndSet(null)?.close()
@@ -254,14 +273,131 @@ class VisualizerController(
         view.onPause()
     }
 
+    fun attachSecond(view: GLSurfaceView) {
+        SynesthesiaRenderer.configure(view)
+        view.preserveEGLContextOnPause = preserveEglContext
+        view.setRenderer(secondRenderer)
+        view.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+        secondRenderer.syncScaling = syncScaling
+        secondRenderer.syncGroup = syncGroup
+        if (userPaused || lifecyclePaused) secondRenderer.pause() else secondRenderer.resume()
+        secondSurface = view
+        Log.i(TAG, "second view attached grouped=${syncGroup != null}")
+    }
+
+    fun detachSecond(view: GLSurfaceView) {
+        if (secondSurface !== view) return
+        secondSurface = null
+        val released = CountDownLatch(1)
+        view.queueEvent {
+            secondRenderer.release()
+            Log.i(TAG, "second view released on ${Thread.currentThread().name}")
+            released.countDown()
+        }
+        if (!released.await(RELEASE_WAIT_MILLIS, TimeUnit.MILLISECONDS)) Log.w(TAG, "second view release timed out")
+        view.onPause()
+        Log.i(TAG, "second view detached")
+    }
+
+    fun applySecondView(enabled: Boolean) {
+        if (!enabled) applySyncVisuals(false)
+        secondViewEnabled = enabled
+        Log.i(TAG, "second view enabled=$enabled")
+    }
+
+    fun applySecondViewWide(wide: Boolean) {
+        secondViewWide = wide
+        Log.i(TAG, "second view wide=$wide")
+    }
+
+    fun applySyncScaling(scaling: Int) {
+        syncScaling = scaling
+        renderer.syncScaling = scaling
+        secondRenderer.syncScaling = scaling
+        Log.i(TAG, "sync scaling=${SyncScaling.name(scaling)}")
+    }
+
+    fun applySyncVisuals(enabled: Boolean) {
+        if (enabled == syncVisuals) return
+        if (enabled) {
+            secondViewEnabled = true
+            startSyncGroup()
+        } else {
+            stopSyncGroup(reload = true)
+        }
+    }
+
+    private fun startSyncGroup() {
+        val group = try {
+            SynesthesiaSyncGroup(configuration(fps), groupListener)
+        } catch (failure: SynesthesiaException) {
+            Log.e(TAG, "sync group refused", failure)
+            errorMessage = failure.message
+            return
+        }
+        group.playbackRate = playbackRateSetting
+        group.debugInterval = DEBUG_INTERVAL_SECONDS
+        group.debugListener = activeDebugListener()
+        group.transitionConfiguration = transitionConfiguration()
+        group.blendPattern = blendPattern
+        group.presetRequestListener = presetRequestListener
+        syncGroup = group
+        syncVisuals = true
+        renderer.syncGroup = group
+        secondRenderer.syncGroup = group
+        Log.i(TAG, "sync visuals on scaling=${SyncScaling.name(syncScaling)}")
+    }
+
+    private fun stopSyncGroup(reload: Boolean) {
+        val group = syncGroup ?: return
+        syncGroup = null
+        syncVisuals = false
+        renderer.syncGroup = null
+        secondRenderer.syncGroup = null
+        group.close()
+        Log.i(TAG, "sync visuals off")
+        if (reload) selectPreset(loadedPreset, 0f)
+    }
+
+    private val groupListener = object : SynesthesiaRenderer.Listener {
+        override fun onContextCreated(renderContext: SynesthesiaContext) {
+            Log.i(TAG, "sync group context created")
+            load(renderContext, loadedPreset, 0f)
+        }
+
+        override fun onContextError(error: SynesthesiaException) {
+            Log.e(TAG, "sync group error", error)
+            errorMessage = error.message
+        }
+    }
+
+    private fun activeContext(): SynesthesiaContext? = syncGroup?.context ?: renderer.context
+
+    private fun configuration(maxFps: Float): SynesthesiaConfiguration = SynesthesiaConfiguration.builder()
+        .setSize(widthPixels, heightPixels)
+        .setResourcePath(library.resourceRoot)
+        .setMaxFps(maxFps)
+        .setMaxLuminance(maxLuminance)
+        .setFlashLimit(flashLimit)
+        .build()
+
+    private fun createSecondRenderer(maxFps: Float): SynesthesiaRenderer = SynesthesiaRenderer(
+        configuration(maxFps),
+        object : SynesthesiaRenderer.Listener {
+            override fun onContextCreated(renderContext: SynesthesiaContext) {
+                Log.i(TAG, "second view context created")
+                load(renderContext, loadedPreset, 0f)
+            }
+
+            override fun onContextError(error: SynesthesiaException) {
+                Log.e(TAG, "second view error", error)
+                errorMessage = error.message
+            }
+        },
+    )
+
     private fun createRenderer(maxFps: Float): SynesthesiaRenderer = SynesthesiaRenderer(
-        SynesthesiaConfiguration.builder()
-            .setSize(widthPixels, heightPixels)
-            .setResourcePath(library.resourceRoot)
-            .setMaxFps(maxFps)
-            .setMaxLuminance(maxLuminance)
-            .setFlashLimit(flashLimit)
-            .build(),
+        configuration(maxFps),
         object : SynesthesiaRenderer.Listener {
             override fun onContextCreated(renderContext: SynesthesiaContext) {
                 Log.i(TAG, "context created")
@@ -284,6 +420,8 @@ class VisualizerController(
         renderer.transitionConfiguration = transitionConfiguration()
         renderer.blendPattern = blendPattern
         renderer.presetRequestListener = presetRequestListener
+        renderer.syncScaling = syncScaling
+        renderer.syncGroup = syncGroup
         if (userPaused || lifecyclePaused) renderer.pause()
     }
 
@@ -345,7 +483,10 @@ class VisualizerController(
         preset = next
         loadedPreset = next
         val ticket = requestSequence.incrementAndGet()
-        val target = renderer.context ?: return
+        if (syncGroup == null) {
+            secondSurface?.queueEvent { secondRenderer.context?.let { load(it, next, blend) } }
+        }
+        val target = activeContext() ?: return
         prepareExecutor.execute { prepare(target, next, ticket, blend) }
     }
 
@@ -369,12 +510,14 @@ class VisualizerController(
         playing = value
         userPaused = !value
         if (value) renderer.resume() else renderer.pause()
+        if (value) secondRenderer.resume() else secondRenderer.pause()
         Log.i(TAG, "user playback playing=$value")
     }
 
     fun applyFps(value: Float) {
         if (value == fps) return
         fps = value
+        syncGroup?.maxFps = value
         Log.i(TAG, "fps $value")
     }
 
@@ -382,6 +525,7 @@ class VisualizerController(
         if (value == playbackRateSetting) return
         playbackRateSetting = value
         renderer.playbackRate = value
+        syncGroup?.playbackRate = value
         Log.i(TAG, "playback rate $value")
     }
 
@@ -405,6 +549,7 @@ class VisualizerController(
     fun applyBlendPattern(pattern: Int) {
         blendPattern = pattern
         renderer.blendPattern = pattern
+        syncGroup?.blendPattern = pattern
         Log.i(TAG, "blend pattern=$pattern ${BlendPattern.name(pattern)}")
     }
 
@@ -415,7 +560,9 @@ class VisualizerController(
     }
 
     private fun applyTransition() {
-        renderer.transitionConfiguration = transitionConfiguration()
+        val configuration = transitionConfiguration()
+        renderer.transitionConfiguration = configuration
+        syncGroup?.transitionConfiguration = configuration
     }
 
     private fun transitionConfiguration(): TransitionConfiguration = TransitionConfiguration.builder()
@@ -429,6 +576,7 @@ class VisualizerController(
     fun applyDebugEnabled(enabled: Boolean) {
         debugEnabled = enabled
         renderer.debugListener = activeDebugListener()
+        syncGroup?.debugListener = activeDebugListener()
         if (!enabled) debugInfo = null
         Log.i(TAG, "debug overlay enabled=$enabled")
     }
@@ -449,14 +597,14 @@ class VisualizerController(
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun useMicrophone(audioSourceType: Int) {
-        val input = AudioInput({ renderer.context }, audioSourceType)
+        val input = AudioInput({ activeContext() }, audioSourceType)
         startLiveInput(AudioSource.Microphone, LiveInput(input::start, input::stop))
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun useSystemAudio(projection: MediaProjection) {
-        val input = PlaybackCaptureInput(projection) { renderer.context }
+        val input = PlaybackCaptureInput(projection) { activeContext() }
         startLiveInput(AudioSource.SystemAudio, LiveInput(input::start, input::stop))
     }
 
@@ -464,6 +612,8 @@ class VisualizerController(
         lifecyclePaused = true
         surface?.onPause()
         renderer.pause()
+        secondSurface?.onPause()
+        secondRenderer.pause()
         liveInput?.stop?.invoke()
         Log.i(TAG, "lifecycle pause")
     }
@@ -472,6 +622,8 @@ class VisualizerController(
         lifecyclePaused = false
         surface?.onResume()
         if (!userPaused) renderer.resume()
+        secondSurface?.onResume()
+        if (!userPaused) secondRenderer.resume()
         lastFeedNanos = 0L
         liveInput?.let { restart(it) }
         Log.i(TAG, "lifecycle resume")
@@ -505,7 +657,7 @@ class VisualizerController(
         val now = System.nanoTime()
         val last = lastFeedNanos
         lastFeedNanos = now
-        val liveContext = renderer.context ?: return
+        val liveContext = activeContext() ?: return
         if (!feedsWav) return
         val deltaSeconds = if (last == 0L) FRAME_SECONDS else ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FEED_SECONDS)
         wavFeeder?.feed(liveContext, deltaSeconds)
@@ -568,12 +720,19 @@ class VisualizerController(
         }
         pendingPrepared.getAndSet(prepared)?.close()
         mainHandler.post {
+            val group = syncGroup
             val view = surface
-            if (view == null) {
+            val queued = when {
+                group != null && group.context === target -> group.queueEvent { commit(target, prepared, wanted, ticket, blend) }
+                view != null -> {
+                    view.queueEvent { commit(target, prepared, wanted, ticket, blend) }
+                    true
+                }
+                else -> false
+            }
+            if (!queued) {
                 pendingPrepared.compareAndSet(prepared, null)
                 prepared.close()
-            } else {
-                view.queueEvent { commit(target, prepared, wanted, ticket, blend) }
             }
         }
     }
@@ -584,7 +743,7 @@ class VisualizerController(
             return
         }
         try {
-            if (ticket != requestSequence.get() || renderer.context !== target) return
+            if (ticket != requestSequence.get() || activeContext() !== target) return
             val started = System.nanoTime()
             runCatching { target.commitPreset(prepared, blend) }
                 .onSuccess {
@@ -610,6 +769,7 @@ class VisualizerController(
         private const val NANOS_PER_SECOND = 1.0e9
         private const val REFRESH_RATE_TOLERANCE = 1f
         private const val NANOS_PER_MILLI = 1_000_000L
+        private const val RELEASE_WAIT_MILLIS = 1_000L
         private const val PREPARE_STACK_BYTES = 8L * 1024 * 1024
         private const val IMPORT_PROGRESS_STEP = 10
         private const val GL_VERSION_PREFIX = "GL_VERSION="

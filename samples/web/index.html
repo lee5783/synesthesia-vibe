@@ -92,6 +92,19 @@
                         </div>
                     </div>
 
+                    <div id="sync-panel" class="sync-panel" hidden>
+                        <canvas id="visualizer-mirror" aria-label="Second visualizer output, SynesthesiaCanvas"></canvas>
+                        <div class="sync-controls">
+                            <label class="sync-toggle"><input id="sync-toggle" type="checkbox"> Sync visuals</label>
+                            <select id="sync-scaling" class="sync-select" aria-label="Sync scaling">
+                                <option value="fill" selected>Fill</option>
+                                <option value="fit">Fit</option>
+                                <option value="stretch">Stretch</option>
+                            </select>
+                        </div>
+                        <span id="sync-status" class="sync-status"></span>
+                    </div>
+
                     <div id="load-panel" class="load-panel">
                         <p id="load-status" class="load-status">Loading the module&hellip;</p>
                         <progress id="load-progress" max="1" value="0"></progress>

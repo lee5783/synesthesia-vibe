@@ -9,6 +9,7 @@ add_library(synesthesia-vibe-darwin OBJECT
   src/SVSystemAudioInput.mm
   src/SVWavFeeder.mm
   src/SVCaptureSession.mm
+  src/SVSyncGroup.mm
   ../macos/SVView+macOS.mm
 )
 
@@ -57,6 +58,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     "-framework OpenGL"
     "-framework AppKit"
     "-framework CoreVideo"
+    "-framework IOSurface"
     "-framework QuartzCore"
   )
 endif()

@@ -15,4 +15,5 @@
 #import "SVSystemAudioInput.h"
 #import "SVWavFeeder.h"
 #import "SVCaptureSession.h"
+#import "SVSyncGroup.h"
 #import "SVView.h"

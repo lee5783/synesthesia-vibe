@@ -254,6 +254,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 {
     VisualizerLog([NSString stringWithFormat:@"playback rate=%.3f", playbackRate]);
     self.visualizerView.playbackRate = playbackRate;
+    [self applySettingsToSyncGroup];
 }
 
 - (void (^)(NSDictionary<NSString *, id> *))debugInfoHandler
@@ -275,6 +276,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 {
     VisualizerLog([NSString stringWithFormat:@"debug interval=%.3f", debugInterval]);
     self.visualizerView.debugInterval = debugInterval;
+    [self applySettingsToSyncGroup];
 }
 
 - (BOOL)debugEnabled
@@ -289,6 +291,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
     if (!debugEnabled) {
         self.lastDebugInfo = nil;
         self.visualizerView.debugInfoHandler = nil;
+        [self applySettingsToSyncGroup];
         return;
     }
 
@@ -297,6 +300,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
         weakSelf.lastDebugInfo = info;
         [weakSelf.delegate visualizerViewController:weakSelf didUpdateDebugInfo:info];
     };
+    [self applySettingsToSyncGroup];
 }
 
 - (SVTransitionConfiguration *)transitionConfiguration
@@ -307,6 +311,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 - (void)setTransitionConfiguration:(SVTransitionConfiguration *)transitionConfiguration
 {
     self.visualizerView.transitionConfiguration = transitionConfiguration;
+    [self applySettingsToSyncGroup];
 }
 
 - (NSInteger)blendPattern
@@ -318,6 +323,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 {
     VisualizerLog([NSString stringWithFormat:@"blend pattern=%@", SVBlendPatternName(blendPattern)]);
     self.visualizerView.blendPattern = blendPattern;
+    [self applySettingsToSyncGroup];
 }
 
 - (void (^)(SVPresetRequest *))presetRequestHandler
@@ -328,6 +334,7 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 - (void)setPresetRequestHandler:(void (^)(SVPresetRequest *))presetRequestHandler
 {
     self.visualizerView.presetRequestHandler = presetRequestHandler;
+    [self applySettingsToSyncGroup];
 }
 
 - (CGFloat)renderScale
@@ -339,6 +346,36 @@ typedef void (^VisualizerPrepareCompletion)(SVPreparedPreset *_Nullable prepared
 {
     VisualizerLog([NSString stringWithFormat:@"render scale=%.2f", renderScale]);
     self.visualizerView.renderScale = renderScale;
+    [self applySettingsToSyncGroup];
+}
+
+- (SVSyncGroup *)syncGroup
+{
+    return self.visualizerView.syncGroup;
+}
+
+- (void)setSyncGroup:(SVSyncGroup *)syncGroup
+{
+    VisualizerLog([NSString stringWithFormat:@"sync group=%p view=%p", (__bridge void *)syncGroup, (__bridge void *)self.visualizerView]);
+    self.visualizerView.syncGroup = syncGroup;
+    [self applySettingsToSyncGroup];
+}
+
+- (void)applySettingsToSyncGroup
+{
+    SVView *visualizerView = self.visualizerView;
+    SVSyncGroup *syncGroup = visualizerView.syncGroup;
+    if (syncGroup == nil)
+        return;
+
+    syncGroup.playbackRate = visualizerView.playbackRate;
+    syncGroup.debugInterval = visualizerView.debugInterval;
+    syncGroup.debugEnabled = visualizerView.debugEnabled;
+    syncGroup.debugInfoHandler = visualizerView.debugInfoHandler;
+    syncGroup.transitionConfiguration = visualizerView.transitionConfiguration;
+    syncGroup.blendPattern = visualizerView.blendPattern;
+    syncGroup.presetRequestHandler = visualizerView.presetRequestHandler;
+    syncGroup.renderScale = visualizerView.renderScale;
 }
 
 - (void)saveSnapshotToURL:(NSURL *)url completion:(void (^)(NSError *_Nullable error))completion

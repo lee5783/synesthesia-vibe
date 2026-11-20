@@ -45,6 +45,15 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
     public var presetRequestHandler: ((SVPresetRequest) -> Void)? {
         didSet { view?.presetRequestHandler = presetRequestHandler }
     }
+    public var syncGroup: SVSyncGroup? {
+        didSet {
+            guard syncGroup !== oldValue else { return }
+            view?.syncGroup = syncGroup
+        }
+    }
+    public var syncScaling: SVSyncScaling = .fill {
+        didSet { view?.syncScaling = syncScaling }
+    }
 
     public let configuration: SVContextConfiguration
     public private(set) weak var view: SVView?
@@ -89,6 +98,8 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.transitionConfiguration = transitionConfiguration
         view.blendPattern = blendPattern
         view.presetRequestHandler = presetRequestHandler
+        view.syncScaling = syncScaling
+        view.syncGroup = syncGroup
         self.view = view
         if let existing = view.context {
             context = existing
@@ -106,6 +117,7 @@ public final class SynesthesiaPlayer: NSObject, ObservableObject, @unchecked Sen
         view.delegate = nil
         view.debugInfoHandler = nil
         view.presetRequestHandler = nil
+        view.syncGroup = nil
         self.view = nil
         context = nil
         prepareWorker.cancelPending()

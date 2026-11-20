@@ -12,13 +12,14 @@ import UniformTypeIdentifiers
 struct VisualizerScreen: View {
 
     @ObservedObject var store: VisualizerStore
+    @ObservedObject var sync: SyncStore
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationView {
             List {
                 Section {
-                    VisualizerStage(store: store)
+                    VisualizerStage(store: store, sync: sync)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -33,6 +34,7 @@ struct VisualizerScreen: View {
                 transitionSection
                 soundSourceSection
                 playbackSection
+                syncSection
                 developerSection
             }
             .listStyle(.insetGrouped)
@@ -188,6 +190,32 @@ struct VisualizerScreen: View {
         }
     }
 
+    private var syncSection: some View {
+        Section {
+            Toggle("Mirror view", isOn: $sync.mirrorEnabled)
+                .tint(DesignTokens.accentPrimary)
+                .foregroundColor(DesignTokens.textPrimary)
+            Toggle("Sync visuals", isOn: $sync.syncEnabled)
+                .tint(DesignTokens.accentPrimary)
+                .foregroundColor(DesignTokens.textPrimary)
+                .disabled(!sync.mirrorEnabled)
+            Picker("Scaling", selection: $sync.scaling) {
+                ForEach(SyncStore.scalingChoices, id: \.self) { scaling in
+                    Text(SyncStore.name(for: scaling)).tag(scaling)
+                }
+            }
+            .pickerStyle(.segmented)
+            if let errorText = sync.errorText {
+                Text(errorText)
+                    .foregroundColor(DesignTokens.textSecondary)
+            }
+        } header: {
+            Text("Multi-display")
+        } footer: {
+            Text("Mirror view adds a second view under the first. Sync visuals renders once and shows the same frame in both views.")
+        }
+    }
+
     private var developerSection: some View {
         Section {
             Toggle("Debug overlay", isOn: $store.debugEnabled)
@@ -204,15 +232,25 @@ struct VisualizerScreen: View {
 private struct VisualizerStage: View {
 
     @ObservedObject var store: VisualizerStore
+    @ObservedObject var sync: SyncStore
 
     var body: some View {
         GeometryReader { geometry in
             let side = geometry.size.width
+            let viewHeight = sync.mirrorEnabled ? floor(side / 2) : side
             ZStack(alignment: .topLeading) {
-                VisualizerCanvas(player: store.player) { view in
-                    store.attachView(view)
+                VStack(spacing: 0) {
+                    VisualizerCanvas(player: store.player) { view in
+                        store.attachView(view)
+                    }
+                    .frame(width: side, height: viewHeight)
+                    if sync.mirrorEnabled {
+                        SynesthesiaView(player: sync.mirrorPlayer)
+                            .syncGroup(sync.activeGroup, scaling: sync.scaling)
+                            .frame(width: side, height: viewHeight)
+                    }
                 }
-                .frame(width: side, height: side)
+                .frame(width: side, height: side, alignment: .top)
                 if store.debugEnabled {
                     DebugCard(store: store)
                         .padding(.leading, 12)

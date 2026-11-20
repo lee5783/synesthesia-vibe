@@ -8,6 +8,7 @@
 import { ResourceLoader } from "./resource-loader.js";
 import { SynesthesiaContext } from "./synesthesia-context.js";
 import { SynesthesiaError } from "./synesthesia-error.js";
+import { SynesthesiaSyncGroup } from "./synesthesia-sync-group.js";
 import { createWebGl2Context, makeWebGlContextCurrent, registerWebGlContext, releaseWebGlContext } from "./webgl-context.js";
 
 const MAX_DEVICE_PIXEL_RATIO = 2;
@@ -19,6 +20,7 @@ const DEADLINE_TOLERANCE = 0.2;
 const DEFAULT_PLAYBACK_RATE = 1;
 const DEFAULT_DEBUG_INTERVAL = 1;
 const DEFAULT_BLEND_PATTERN = SynesthesiaContext.BLEND_PATTERN_RANDOM;
+const DEFAULT_SYNC_SCALING = "fill";
 
 export class SynesthesiaCanvas {
 
@@ -49,6 +51,13 @@ export class SynesthesiaCanvas {
     #closed = false;
     #resizeObserver = null;
     #listeners = [];
+    #syncGroup = null;
+    #syncScaling = DEFAULT_SYNC_SCALING;
+    #syncMember = null;
+    #intersecting = true;
+    #intersectionObserver = null;
+    #contextWidth = 0;
+    #contextHeight = 0;
 
     constructor(canvas, module, options = {}) {
         this.#canvas = canvas;
@@ -57,6 +66,7 @@ export class SynesthesiaCanvas {
         this.#onError = options.onError ?? null;
         this.#onContextCreated = options.onContextCreated ?? null;
         this.#onBeforeRender = options.onBeforeRender ?? null;
+        this.#syncScaling = options.syncScaling ?? DEFAULT_SYNC_SCALING;
         this.#frameIntervalMs = SynesthesiaCanvas.#frameIntervalFor(this.#configuration.maxFps);
         this.#hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     }
@@ -74,6 +84,10 @@ export class SynesthesiaCanvas {
         }
 
         view.#listen();
+
+        if (options.syncGroup !== undefined && options.syncGroup !== null)
+            view.syncGroup = options.syncGroup;
+
         view.#startLoop();
         return view;
     }
@@ -101,7 +115,7 @@ export class SynesthesiaCanvas {
     setPlaybackRate(rate) {
         this.#playbackRate = rate;
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.setPlaybackRate(rate);
     }
 
@@ -115,7 +129,7 @@ export class SynesthesiaCanvas {
 
         this.#onDebugInfo = handler ?? null;
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.onDebugInfo = this.#onDebugInfo;
     }
 
@@ -126,7 +140,7 @@ export class SynesthesiaCanvas {
     setDebugInterval(seconds) {
         this.#debugInterval = seconds;
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.setDebugInterval(seconds);
     }
 
@@ -137,7 +151,7 @@ export class SynesthesiaCanvas {
     setTransitionConfig(config) {
         this.#transitionConfig = { ...(this.#transitionConfig ?? {}), ...config };
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.setTransitionConfig(this.#transitionConfig);
     }
 
@@ -148,7 +162,7 @@ export class SynesthesiaCanvas {
     setBlendPattern(pattern) {
         this.#blendPattern = pattern;
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.setBlendPattern(pattern);
     }
 
@@ -162,8 +176,39 @@ export class SynesthesiaCanvas {
 
         this.#onPresetRequest = handler ?? null;
 
-        if (this.#context !== null)
+        if (this.#context !== null && this.#syncGroup === null)
             this.#context.onPresetRequest = this.#onPresetRequest;
+    }
+
+    get syncGroup() {
+        return this.#syncGroup;
+    }
+
+    set syncGroup(group) {
+        if (group !== null && group !== undefined && typeof group.addMember !== "function")
+            throw new TypeError("syncGroup takes a SynesthesiaSyncGroup or null");
+
+        const next = group ?? null;
+
+        if (next === this.#syncGroup || this.#closed)
+            return;
+
+        if (this.#syncGroup !== null)
+            this.#leaveSyncGroup();
+
+        if (next !== null)
+            this.#joinSyncGroup(next);
+    }
+
+    get syncScaling() {
+        return this.#syncScaling;
+    }
+
+    set syncScaling(scaling) {
+        if (!SynesthesiaSyncGroup.SCALINGS.includes(scaling))
+            throw new TypeError("syncScaling takes fill, fit or stretch");
+
+        this.#syncScaling = scaling;
     }
 
     get isContextLost() {
@@ -204,6 +249,9 @@ export class SynesthesiaCanvas {
         if (this.#closed)
             return;
 
+        if (this.#syncGroup !== null)
+            this.#leaveSyncGroup();
+
         this.#closed = true;
         this.#stopLoop();
         this.#resizeObserver?.disconnect();
@@ -230,30 +278,106 @@ export class SynesthesiaCanvas {
             height: this.#canvas.height
         });
 
-        if (this.#paused || this.#hidden)
+        this.#applyStoredSettings(context);
+
+        if (this.#paused || this.#hidden || this.#syncGroup !== null)
             context.pause();
 
+        this.#context = context;
+        this.#contextWidth = this.#canvas.width;
+        this.#contextHeight = this.#canvas.height;
+        this.#lastFrameMs = 0;
+
+        if (this.#onContextCreated !== null)
+            this.#onContextCreated(context);
+    }
+
+    #applyStoredSettings(context) {
         context.setPlaybackRate(this.#playbackRate);
 
         if (this.#debugInterval !== null)
             context.setDebugInterval(this.#debugInterval);
 
-        if (this.#onDebugInfo !== null)
-            context.onDebugInfo = this.#onDebugInfo;
+        context.onDebugInfo = this.#onDebugInfo;
 
         if (this.#transitionConfig !== null)
             context.setTransitionConfig(this.#transitionConfig);
 
         context.setBlendPattern(this.#blendPattern);
+        context.onPresetRequest = this.#onPresetRequest;
+    }
 
-        if (this.#onPresetRequest !== null)
-            context.onPresetRequest = this.#onPresetRequest;
+    #joinSyncGroup(group) {
+        if (this.#configuration.deterministic) {
+            this.#report(new SynesthesiaError(SynesthesiaError.SV_ERR_ARG, "a deterministic configuration cannot join a SynesthesiaSyncGroup"));
+            return;
+        }
 
-        this.#context = context;
-        this.#lastFrameMs = 0;
+        const member = {
+            canvas: () => this.#canvas,
+            gl: () => this.#gl,
+            scaling: () => this.#syncScaling,
+            isVisible: () => !this.#paused && this.#intersecting,
+            isLost: () => this.#lost || this.#closed,
+            detach: () => {
+                if (this.#syncMember === member)
+                    this.syncGroup = null;
+            }
+        };
 
-        if (this.#onContextCreated !== null)
-            this.#onContextCreated(context);
+        try {
+            group.addMember(member);
+        } catch (error) {
+            this.#report(error);
+            return;
+        }
+
+        this.#syncGroup = group;
+        this.#syncMember = member;
+        this.#observeIntersection();
+        this.#stopLoop();
+
+        if (this.#context !== null) {
+            makeWebGlContextCurrent(this.#module, this.#glHandle);
+            this.#context.pause();
+        }
+    }
+
+    #leaveSyncGroup() {
+        const group = this.#syncGroup;
+        const member = this.#syncMember;
+        this.#syncGroup = null;
+        this.#syncMember = null;
+        this.#intersectionObserver?.disconnect();
+        this.#intersectionObserver = null;
+        this.#intersecting = true;
+        group.removeMember(member);
+
+        if (this.#context === null || this.#closed)
+            return;
+
+        makeWebGlContextCurrent(this.#module, this.#glHandle);
+        this.#applyStoredSettings(this.#context);
+
+        if (this.#canvas.width !== this.#contextWidth || this.#canvas.height !== this.#contextHeight) {
+            this.#context.resize(this.#canvas.width, this.#canvas.height);
+            this.#contextWidth = this.#canvas.width;
+            this.#contextHeight = this.#canvas.height;
+        }
+
+        this.#applyRunState();
+    }
+
+    #observeIntersection() {
+        if (typeof IntersectionObserver === "undefined" || !(this.#canvas instanceof HTMLCanvasElement))
+            return;
+
+        this.#intersectionObserver = new IntersectionObserver(entries => {
+            const last = entries[entries.length - 1];
+            this.#intersecting = last.isIntersecting;
+            this.#syncGroup?.refreshMember(this.#syncMember);
+        });
+        this.#intersectionObserver.observe(this.#canvas);
     }
 
     #listen() {
@@ -278,6 +402,7 @@ export class SynesthesiaCanvas {
         event.preventDefault();
         this.#lost = true;
         this.#stopLoop();
+        this.#syncGroup?.invalidateMember(this.#syncMember);
         const lost = this.#context;
         this.#context = null;
 
@@ -299,6 +424,7 @@ export class SynesthesiaCanvas {
             await this.#attach();
             this.#lost = false;
             this.#reloadPreset();
+            this.#syncGroup?.invalidateMember(this.#syncMember);
             this.#startLoop();
         } catch (error) {
             this.#report(error);
@@ -349,9 +475,12 @@ export class SynesthesiaCanvas {
 
         makeWebGlContextCurrent(this.#module, this.#glHandle);
 
-        if (this.#paused || this.#hidden) {
+        if (this.#paused || this.#hidden || this.#syncGroup !== null) {
             this.#context.pause();
             this.#stopLoop();
+
+            if (this.#syncGroup !== null)
+                this.#syncGroup.refreshMember(this.#syncMember);
         } else {
             this.#context.resume();
             this.#startLoop();
@@ -362,8 +491,13 @@ export class SynesthesiaCanvas {
         if (!this.#updateBackingSize() || this.#context === null)
             return;
 
+        if (this.#syncGroup !== null)
+            return;
+
         makeWebGlContextCurrent(this.#module, this.#glHandle);
         this.#context.resize(this.#canvas.width, this.#canvas.height);
+        this.#contextWidth = this.#canvas.width;
+        this.#contextHeight = this.#canvas.height;
     }
 
     #updateBackingSize() {
@@ -382,7 +516,7 @@ export class SynesthesiaCanvas {
     }
 
     #startLoop() {
-        if (this.#frameRequest !== 0 || this.#closed || this.#lost || this.#paused || this.#hidden || this.#context === null)
+        if (this.#frameRequest !== 0 || this.#closed || this.#lost || this.#paused || this.#hidden || this.#syncGroup !== null || this.#context === null)
             return;
 
         this.#lastFrameMs = 0;
