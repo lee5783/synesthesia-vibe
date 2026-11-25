@@ -214,6 +214,55 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYNESTHESIA_VIBE_GL_DEV": "ON",
+        "SYNESTHESIA_VIBE_BACKEND": "gles",
+        "SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "windows-x64",
+      "inherits": "windows-base",
+      "displayName": "Windows x64 (Ninja, MSVC, gles over ANGLE)",
+      "description": "x64-windows overlay triplet (static libs, /MD, ANGLE dynamic), gles backend over ANGLE Direct3D 11, no desktop tools; run from an x64 MSVC developer environment; packaged by platform/windows",
+      "binaryDir": "${sourceDir}/build/windows-x64",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "windows-arm64",
+      "inherits": "windows-base",
+      "displayName": "Windows arm64 (Ninja, MSVC x64-hosted cross, gles over ANGLE)",
+      "description": "arm64-windows overlay triplet (static libs, /MD, ANGLE dynamic) with x64-windows host tools, gles backend over ANGLE Direct3D 11, no desktop tools; run from an x64-hosted arm64 MSVC developer environment (vcvarsamd64_arm64); packaged by platform/windows",
+      "binaryDir": "${sourceDir}/build/windows-arm64",
+      "architecture": {
+        "value": "arm64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-windows",
+        "CMAKE_SYSTEM_NAME": "Windows",
+        "CMAKE_SYSTEM_PROCESSOR": "ARM64"
+      }
     }
   ],
   "buildPresets": [
@@ -257,6 +306,14 @@
     {
       "name": "web-wasm32-debug",
       "configurePreset": "web-wasm32-debug"
+    },
+    {
+      "name": "windows-x64",
+      "configurePreset": "windows-x64"
+    },
+    {
+      "name": "windows-arm64",
+      "configurePreset": "windows-arm64"
     }
   ]
 }

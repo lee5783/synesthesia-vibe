@@ -27,6 +27,7 @@ env:
   CMAKE_LINUX_SHA256: d6c83076c575bc00b823522ac974bda66d0af05d6ddc30e739c12385cf32c6cc
   NINJA_VERSION: 1.13.2
   NINJA_LINUX_SHA256: 5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6
+  NINJA_WIN_SHA256: 07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65
   APPLE_TRIPLETS: arm64-ios arm64-ios-simulator x64-ios arm64-osx x64-osx
   ANDROID_TRIPLETS: arm64-android x64-android
   WEB_TRIPLETS: wasm32-emscripten
@@ -416,6 +417,124 @@ jobs:
           path: build/web/synesthesia-vibe-web-${{ env.VERSION }}.zip
           if-no-files-found: error
 
+  build-windows:
+    needs: resolve-version
+    runs-on: windows-2025
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            triplets: x64-windows
+          - arch: arm64
+            triplets: arm64-windows x64-windows
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Install Ninja
+        run: |
+          set -euo pipefail
+          NINJA_DIR="$RUNNER_TEMP/ninja-$NINJA_VERSION"
+          curl -fsSL -o "$RUNNER_TEMP/ninja-win.zip" "https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-win.zip"
+          echo "$NINJA_WIN_SHA256  $RUNNER_TEMP/ninja-win.zip" | sha256sum -c -
+          rm -rf "$NINJA_DIR"
+          unzip -q "$RUNNER_TEMP/ninja-win.zip" -d "$NINJA_DIR"
+          echo "$(cygpath -w "$NINJA_DIR")" >> "$GITHUB_PATH"
+          "$NINJA_DIR/ninja.exe" --version
+          (cd /tmp && env -u PWD cmake --version)
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          triplets: ${{ matrix.triplets }}
+
+      - name: Build Windows library
+        run: bash platform/windows/build-windows.sh --arch ${{ matrix.arch }} --zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-${{ matrix.arch }}-${{ env.VERSION }}
+          path: build/windows/synesthesia-vibe-windows-${{ matrix.arch }}-${{ env.VERSION }}.zip
+          if-no-files-found: error
+
+      - name: Build Windows sample
+        run: bash .github/scripts/build-windows-sample.sh --arch ${{ matrix.arch }}
+
+      - name: Capture smoke on WARP
+        if: matrix.arch == 'x64'
+        run: |
+          set -euo pipefail
+          OUT="build/capture/windows-x64"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          build/samples/windows-x64/synesthesia-vibe-windows-sample.exe --warp --capture "$(cygpath -w "$PWD/$OUT")" --frames 120
+          COUNT="$(find "$OUT" -name '*.png' | wc -l | tr -d ' ')"
+          echo "captured $COUNT PNGs"
+          [[ "$COUNT" -eq 10 ]] || { echo "::error::Expected 10 captured PNGs, got $COUNT"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'x64'
+        with:
+          name: capture-windows-x64-${{ env.VERSION }}
+          path: build/capture/windows-x64/*.png
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'arm64'
+        with:
+          name: sample-windows-arm64-${{ env.VERSION }}
+          path: |
+            build/samples/windows-arm64/synesthesia-vibe-windows-sample.exe
+            build/samples/windows-arm64/*.dll
+          if-no-files-found: error
+
+  smoke-windows-arm64:
+    needs:
+      - resolve-version
+      - build-windows
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sample-windows-arm64-${{ env.VERSION }}
+          path: build/samples/windows-arm64
+
+      - name: Capture smoke on WARP
+        run: |
+          set -euo pipefail
+          OUT="build/capture/windows-arm64"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          build/samples/windows-arm64/synesthesia-vibe-windows-sample.exe --warp --capture "$(cygpath -w "$PWD/$OUT")" --frames 120
+          COUNT="$(find "$OUT" -name '*.png' | wc -l | tr -d ' ')"
+          echo "captured $COUNT PNGs"
+          [[ "$COUNT" -eq 10 ]] || { echo "::error::Expected 10 captured PNGs, got $COUNT"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-windows-arm64-${{ env.VERSION }}
+          path: build/capture/windows-arm64/*.png
+          if-no-files-found: error
+
   publish:
     needs:
       - resolve-version
@@ -424,6 +543,8 @@ jobs:
       - build-android
       - build-android-sample
       - build-web
+      - build-windows
+      - smoke-windows-arm64
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15

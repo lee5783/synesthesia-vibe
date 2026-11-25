@@ -6,7 +6,7 @@
 #
 
 name: Setup vcpkg
-description: Fetch vcpkg at the manifest baseline, bootstrap it, export VCPKG_ROOT and cache binary packages.
+description: Fetch vcpkg at the manifest baseline, bootstrap it (Windows runners included), export VCPKG_ROOT and cache binary packages.
 
 inputs:
   triplets:
@@ -44,6 +44,9 @@ runs:
           echo "::error::The triplets input is empty"
           exit 1
         fi
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          RUNNER_TEMP_DIR="$(cygpath -m "$RUNNER_TEMP_DIR")"
+        fi
         {
           echo "baseline=$baseline"
           echo "vcpkg-root=$RUNNER_TEMP_DIR/vcpkg"
@@ -63,7 +66,11 @@ runs:
         git -C "$VCPKG_DIR" remote add origin https://github.com/microsoft/vcpkg.git
         git -C "$VCPKG_DIR" fetch --quiet --depth 1 origin "$BASELINE"
         git -C "$VCPKG_DIR" checkout --quiet --detach FETCH_HEAD
-        "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          cmd.exe //c "$(cygpath -w "$VCPKG_DIR/bootstrap-vcpkg.bat")" -disableMetrics
+        else
+          "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
+        fi
         echo "vcpkg at $(git -C "$VCPKG_DIR" rev-parse HEAD)"
 
     - name: Export vcpkg environment
