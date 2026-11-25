@@ -80,7 +80,7 @@ find_package(projectM-Eval REQUIRED COMPONENTS Milkdrop)
 # P2-010: SYNESTHESIA_VIBE_ENABLE_VIDEO_TEXTURE gates the FFmpeg-based video-texture support
 # (MediaTexture.cpp, portable_dll_loader.cpp). It defaults ON only for the DX9 presets, so the DX9
 # exe's FFmpeg dependency is unchanged; it is OFF off-Windows and for the GL dev presets, where
-# FFmpeg is not (yet) a build dependency at all (vcpkg.json marks ffmpeg "platform: windows").
+# FFmpeg is not (yet) a build dependency at all (vcpkg.json marks ffmpeg "platform: windows & x86").
 if(WIN32 AND NOT SYNESTHESIA_VIBE_GL_DEV)
   set(SYNESTHESIA_VIBE_ENABLE_VIDEO_TEXTURE_DEFAULT ON)
 else()
@@ -589,6 +589,9 @@ if(SYNESTHESIA_VIBE_GL_DEV)
   endif()
   if(EMSCRIPTEN AND NOT SYNESTHESIA_VIBE_PORTABLE_ONLY AND EXISTS ${CMAKE_SOURCE_DIR}/platform/web/CMakeLists.txt)
     add_subdirectory(platform/web)
+  endif()
+  if(WIN32 AND SYNESTHESIA_VIBE_BACKEND STREQUAL "gles" AND NOT SYNESTHESIA_VIBE_PORTABLE_ONLY)
+    add_subdirectory(platform/windows)
   endif()
   if(SYNESTHESIA_VIBE_BUILD_DESKTOP_TOOLS)
     add_subdirectory(tests/tools/synesthesia-vibe-headless)

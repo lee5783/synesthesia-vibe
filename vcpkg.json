@@ -1,8 +1,12 @@
 {
   "dependencies": [
     {
+      "name": "angle",
+      "platform": "windows & (x64 | arm64)"
+    },
+    {
       "name": "ffmpeg",
-      "platform": "windows"
+      "platform": "windows & x86"
     },
     {
       "name": "glfw3",
