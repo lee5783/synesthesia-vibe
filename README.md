@@ -1,5 +1,7 @@
 # SynesthesiaVibe
 
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/lee5783)
+
 SynesthesiaVibe is a cross-platform C++ music visualizer library that plays MilkDrop 2 presets. It is a
 port of [BeatDrop](https://github.com/OfficialIncubo/BeatDrop-Music-Visualizer), a MilkDrop 2 based
 visualizer for Windows and DirectX 9, to portable code: a preset parser, an OpenGL 3.3 Core renderer
@@ -32,7 +34,7 @@ for x64 and arm64 (OpenGL ES through ANGLE on Direct3D 11), with sample apps for
 | [`tests/unit/`](tests/unit) | Unit tests (GoogleTest, run through CTest) |
 | [`tests/tools/`](tests/tools) | Desktop check, capture and comparison tools |
 | [`triplets/`](triplets) | vcpkg overlay triplets for the Apple and Windows targets |
-| [`.github/`](.github) | Release workflow and its build scripts |
+| [`.github/`](.github) | Release workflow and its build scripts, and the funding link (`FUNDING.yml`) |
 
 ## Platforms
 
@@ -504,6 +506,11 @@ release. Signing the Android sample needs four repository secrets: `ANDROID_KEYS
 ## Contributing
 
 Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening one.
+
+## Support
+
+If SynesthesiaVibe is useful to you, you can leave a tip or buy me a coffee on
+[Ko-fi](https://ko-fi.com/lee5783).
 
 ## License
 
